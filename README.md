@@ -83,7 +83,7 @@ python -m pip install pyinstaller
 python -B tools/build_exe.py
 ```
 
-输出为 `dist/虹语织-桌宠v2.exe`，构建日志位于 `tools/.build/build.log`。
+输出为 `dist/虹语织-桌宠v3.exe`，构建日志位于 `tools/.build/build.log`。
 
 详细操作见 [使用说明](docs/使用说明.txt)，完整功能见 [功能说明](docs/功能说明.md)，搜索实现与验证见 [搜索改造记录](docs/SEARCH_REWORK_2026-09-06.md)。
 

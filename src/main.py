@@ -132,7 +132,7 @@ SKILL_MAX_READ_CHARS = 8000  # per-skill content cap returned to the model
 DEFAULT_BASE_URL = "https://api.kourichat.com/v1"
 DEFAULT_API_KEY = ""  # never hardcoded; the key is read from config.json only
 DEFAULT_MODEL = "deepseek-v4-flash-0731"
-APP_VERSION = "1.0"
+APP_VERSION = "3.0"
 
 # ---------------------------------------------------------------------------
 # Inbound request-header rule:

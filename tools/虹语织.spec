@@ -42,7 +42,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='虹语织-桌宠v2',
+    name='虹语织-桌宠v3',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
