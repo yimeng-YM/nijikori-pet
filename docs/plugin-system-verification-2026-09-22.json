@@ -47,8 +47,10 @@
       "command": "python -B tools/build_exe.py → 启动 dist\\虹语织-桌宠v2.exe（约 26 秒后终止）",
       "result": "通过",
       "evidence": {
-        "build_seconds": 28.53,
-        "exe_bytes": 56623293,
+        "build_seconds": 28.83,
+        "exe_bytes": 56623414,
+        "exe_path": "dist\\虹语织-桌宠v2.exe",
+        "note": "共构建两次；下列证据来自最终产物（21:04 构建，21:04 运行验证）。",
         "plugins_dir_created_beside_exe": "dist\\plugins",
         "seeded": [
           "dist\\plugins\\README.txt",
@@ -62,6 +64,20 @@
           "[system] 加载完成：成功 1，失败 0，跳过 0",
           "[example_hello] 桌宠已启动"
         ],
+        "final_probe": {
+          "log": [
+            "[final_probe] 已加载（dist\\plugins\\final_probe.py）",
+            "[system] 加载完成：成功 1，失败 0，跳过 0"
+          ],
+          "state_file": "dist\\plugin_state\\final_probe.json",
+          "state_content": {"ok": true, "is_frozen": true},
+          "plugins_dir_after_run": [
+            "final_probe.py", "README.txt",
+            "_examples\\example_hello.py", "_examples\\example_override.py",
+            "_examples\\example_appearance.py"
+          ],
+          "conclusion": "插件目录内没有任何状态文件残留，状态正确落在 plugin_state\\"
+        },
         "two_plugins": "state_probe + example_hello → 成功 2，失败 0",
         "state_file": "dist\\plugin_state\\state_probe.json",
         "state_content": {
