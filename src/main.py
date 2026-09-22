@@ -32,6 +32,8 @@ import pet_config
 from pet_search import perform_web_search, DEFAULT_TIMEOUT as SEARCH_TIMEOUT, DEFAULT_LIMIT as SEARCH_LIMIT
 from pet_search_prompt import WEB_SEARCH_DESCRIPTION, QUERY_DESCRIPTION, build_search_prompt
 from pet_paths import PATHS, prepare_data_dir
+import pet_plugins
+from pet_plugins import PLUGINS as _PLUGINS
 import hashlib
 from pet_runtime import TurnState, TOOL_TURN
 from pet_snapshot import SCHEMA as SNAPSHOT_SCHEMA, capture_snapshot
@@ -110,6 +112,11 @@ PROMPT_FILE = str(PATHS.prompt_file)
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
 ACTION_LOG_FILE = os.path.join(DATA_DIR, "action_log.json")   # 🧾 AI 自述操作/写入的动作日志
 SKILLS_DIR = str(PATHS.skills_dir)   # AI-managed + manually dropped .md skill library
+
+# 插件系统（pet_plugins）：用户把 .py 放进 PLUGINS_DIR 即可扩展/改写桌宠能力。
+# 源码版与 EXE 版同一套机制——EXE 的插件目录就在 exe 同级的 plugins\。
+PLUGINS_DIR = str(PATHS.plugins_dir)             # 用户插件目录（可写，放在程序目录旁）
+PLUGIN_TEMPLATES_DIR = str(PATHS.plugin_templates_dir)  # 打包/自带的示例插件，首次播种
 
 # computer_use: keyword values that mean "operate the whole virtual desktop".
 WHOLE_SCREEN_KEYWORDS = frozenset(("screen", "desktop", "display", "all",
@@ -1554,15 +1561,29 @@ class QuickMenu(tk.Toplevel):
             ("💬", "与织织聊天", pet.open_chat_window),
             ("💰", "查询 API 余额", pet.trigger_quota_check),
             ("📜", "对话历史", pet.open_history_window),
-            None,
-            ("🎛", "控制中心", pet.open_control_center),
-            ("🔄", "重启桌宠", pet.restart_pet),
-            ("❌", "退出桌宠", pet.quit_pet),
         ]
+        # 插件注册的菜单项（排在固定项之前，随插件加载/重载动态变化）
+        try:
+            for item in pet._plugin_menu_items():
+                items.append((item["icon"], item["label"], item["callback"]))
+        except Exception:
+            pass
+        items += [None,
+                  ("🎛", "控制中心", pet.open_control_center),
+                  ("🔄", "重启桌宠", pet.restart_pet),
+                  ("❌", "退出桌宠", pet.quit_pet),
+                  ]
         row_h = int(38 * dpi)
         pad = int(9 * dpi)
         sep_h = int(10 * dpi)
         width = int(226 * dpi)
+        # 插件菜单项名字可能较长：按实际文字宽度放宽（上限避免超出屏幕）
+        try:
+            needed = [pet.f_ui.measure(str(it[1])) + int(96 * dpi) for it in items if it]
+            if needed:
+                width = max(width, min(int(360 * dpi), max(needed)))
+        except Exception:
+            pass
         height = pad * 2 + sum(row_h if it else sep_h for it in items)
 
         cv = tk.Canvas(self, width=width, height=height, bg=MAGIC_COLOR,
@@ -2442,10 +2463,44 @@ PET_TOOLS = [
 # 🛠 工具分类（右键菜单 → 管理工具 用于分类展示所有工具）
 # ---------------------------------------------------------------------------
 PET_TOOLS.append(SNAPSHOT_SCHEMA)  # 统一截图工具：screen/window + 保存/不保存
+PET_TOOLS.append({                 # 插件管理工具（源码版与 EXE 版通用）
+    "type": "function",
+    "function": {
+        "name": "manage_plugins",
+        "description": "管理织织的插件系统（plugins 文件夹里的 .py 扩展）：list=查看插件目录、加载状态、失败原因与插件提供的工具/表情/动作；reload=重新扫描并加载（新写好的插件用它立即生效）；enable/disable=启用或停用某个插件（写入信任库）；open_folder=打开插件文件夹；examples=把自带示例插件复制到插件目录并加载。主人要求给桌宠加功能、写插件、装插件、看插件是否生效时使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "reload", "enable", "disable", "open_folder", "examples"],
+                    "description": "要执行的操作，默认 list"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "插件名（enable / disable 时必填，即 plugins 文件夹里的文件名或文件夹名）"
+                }
+            },
+            "required": []
+        }
+    }
+})
 # 只有真正"必须能看到图"的工具才受识图开关限制：统一截图工具在识图关闭时
 # 仍可用于保存截图，但 computer_use 每一步都靠回传的窗口快照决定下一步，
 # 识图关闭时不能盲操作，所以一并隐藏。
 VISION_ONLY_TOOLS = {"read_image", "computer_use"}
+
+# 桌宠内置肢体动作（插件可以用 register_action 追加自己的动作名）
+BASE_PET_ACTIONS = ("bounce", "jump", "shake", "nod", "wiggle", "shiver", "sway", "drop")
+
+
+def pet_tool_schema(name):
+    """按工具名取出 PET_TOOLS 里的 function schema（插件会改写它们）。"""
+    for entry in PET_TOOLS:
+        fn = entry.get("function") if isinstance(entry, dict) else None
+        if isinstance(fn, dict) and fn.get("name") == name:
+            return fn
+    return None
 
 TOOL_CATEGORIES = {
     "query_api_balance_and_usage": "账户与信息",
@@ -2485,6 +2540,7 @@ TOOL_CATEGORIES = {
     "cancel_scheduled_task": "定时任务",
     "manage_long_term_memory": "记忆与技能",
     "manage_skills": "记忆与技能",
+    "manage_plugins": "记忆与技能",
     "query_action_log": "记忆与技能",
 }
 
@@ -2499,6 +2555,146 @@ try:
 except Exception as _pet_tools_err:  # 打包/缺目录时优雅降级，不影响桌宠本体
     _pet_tools_mod = None
     print(f"[pet_tools] 增强工具包加载失败: {_pet_tools_err}")
+
+
+# ---------------------------------------------------------------------------
+# 插件系统接线（pet_plugins）
+# 内核认识插件管理器，插件只认识 api —— 单向依赖，插件出错不影响桌宠本体。
+# ---------------------------------------------------------------------------
+_PLUGIN_ACTIVE_PET = [None]   # 桌宠实例（模块级兜底引用，UI 就绪后填充）
+
+
+def _plugin_pet():
+    """当前桌宠实例：优先取插件宿主里的引用，其次取模块级兜底。"""
+    try:
+        host = getattr(_PLUGINS, "host", None)
+        pet = getattr(host, "pet", None) if host is not None else None
+        return pet or _PLUGIN_ACTIVE_PET[0]
+    except Exception:
+        return _PLUGIN_ACTIVE_PET[0]
+
+
+def _plugin_get_config(key=None, default=None):
+    pet = _plugin_pet()
+    if pet is None:
+        return default
+    if key is None:
+        return copy.deepcopy(pet.config)
+    return pet.config.get(key, default)
+
+
+def _plugin_set_config(key, value):
+    pet = _plugin_pet()
+    if pet is None:
+        return False
+    pet.config[key] = value
+    return pet.save_config()
+
+
+def _plugin_list_skills():
+    pet = _plugin_pet()
+    if pet is None:
+        return []
+    return [entry["name"] for entry in pet._get_skill_catalog()]
+
+
+def _plugin_read_skill(name):
+    pet = _plugin_pet()
+    if pet is None:
+        return None
+    path = pet._skill_path_for(str(name))
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read(SKILL_MAX_READ_CHARS)
+    except OSError:
+        return None
+
+
+def _plugin_ui_kit():
+    """给插件控制中心页用的桌宠同款 UI 工具箱。"""
+    pet = _plugin_pet()
+    if pet is None:
+        return {}
+    return {
+        "dpi": pet.dpi_scale,
+        "pal": PAL,
+        "card": pet._cc_card,
+        "scrollable": pet._cc_scrollable,
+        "toggle_row": pet._cc_toggle_row,
+        "field": pet._cc_field,
+        "open_path": pet._cc_open_path,
+        "button": PastelButton,
+        "toggle": ToggleSwitch,
+        "label": tk.Label,
+        "frame": tk.Frame,
+        "entry": tk.Entry,
+        "f_title": pet.f_title,
+        "f_ui": pet.f_ui,
+        "f_ui_bold": pet.f_ui_bold,
+        "f_small": pet.f_small,
+        "f_chat": pet.f_chat,
+    }
+
+
+def _plugin_on_tools_changed():
+    """工具表变化后刷新 AI 可见的工具清单（PET_TOOLS 本身是实时读取的）。"""
+    pet = _plugin_pet()
+    if pet is not None:
+        pet._plugin_tools_revision = getattr(pet, "_plugin_tools_revision", 0) + 1
+
+
+def _plugin_on_emotions_changed():
+    pet = _plugin_pet()
+    if pet is not None:
+        pet._tk_call(pet._refresh_emotion_catalog)
+
+
+def _plugin_on_actions_changed():
+    pet = _plugin_pet()
+    if pet is not None:
+        pet._tk_call(pet._refresh_action_catalog)
+
+
+try:
+    _PLUGINS.attach(pet_plugins.PluginHost(
+        pet_tools_module=_pet_tools_mod,
+        tools_list=PET_TOOLS,
+        tool_categories=TOOL_CATEGORIES,
+        vision_only_tools=VISION_ONLY_TOOLS,
+        emotions=EMOTIONS,
+        text_bearing_emotions=TEXT_BEARING_EMOTIONS,
+        plugins_dir=PLUGINS_DIR,
+        templates_dir=PLUGIN_TEMPLATES_DIR,
+        data_dir=DATA_DIR,
+        app_dir=SCRIPT_DIR,
+        app_version=APP_VERSION,
+        is_frozen=bool(getattr(sys, "frozen", False)),
+        logger=print,
+        ui_kit=_plugin_ui_kit,
+        on_tools_changed=_plugin_on_tools_changed,
+        on_emotions_changed=_plugin_on_emotions_changed,
+        on_actions_changed=_plugin_on_actions_changed,
+        get_config=_plugin_get_config,
+        set_config=_plugin_set_config,
+        read_skill=_plugin_read_skill,
+        list_skills=_plugin_list_skills,
+    ))
+except Exception as _plugin_attach_err:  # 插件系统异常绝不阻止桌宠启动
+    print(f"[plugins] 插件系统挂载失败: {_plugin_attach_err}")
+
+# 给模型看的插件系统说明（工具与能力由插件动态提供，故写进提示词）
+PLUGIN_SYSTEM_GUIDE = """【插件系统（Plugins）—— 织织可以被扩展】
+• 主人可以用插件给织织加新能力或改写已有能力：把 .py 文件放进插件文件夹即可，源码版与 EXE 版都是同一个目录——
+  """ + PLUGINS_DIR + """。
+• 支持两种插件形态：单文件（plugins/我的工具.py）与文件夹（plugins/名字/plugin.py，可带自己的模块和资源）；以 _ 或 . 开头的文件/文件夹不会被加载。
+• 插件能做到：新增工具、接管或包装已有工具（含内置工具）、往系统提示词加内容、加右键菜单项与控制中心页面、注册新表情立绘与自定义动作、监听事件（启动/消息/工具调用前后/表情变化/定时任务）。
+• 安全机制：插件是任意 Python 代码，所以新插件（或内容变化过的插件）首次加载时主人会看到确认弹窗；确认结果按内容哈希记在 data/plugin_trust.json，之后静默加载。
+• 当主人问"能不能加个功能""怎么给织织加能力""插件怎么用"时，先读技能库里的「插件开发指南」技能（manage_skills action=read），按里面的模板写插件；
+  写好 .py 放进插件文件夹后，用 manage_plugins action=reload 立即生效，并告诉主人加载结果。
+• 需要看插件状态、加载失败原因、或开关某个插件时，用 manage_plugins 工具（action=list / reload / enable / disable / open_folder / examples）。
+• 纪律：只按主人明确要求写插件；插件里不要写破坏性操作（删库、上传隐私、常驻后台外联）；写完要如实汇报它做了什么、监听/接管了什么。"""
 
 
 # Windows Recycle Bin structure for file deletion detection
@@ -4009,6 +4205,7 @@ WORK_LOG_TOOLS = {
     "write_text_file", "edit_text_file", "edit_lines", "file_operations",
     "web_search", "open_website", "open_file_or_folder",
     "search_local_files", "delegate_to_harness", "manage_skills", "manage_long_term_memory",
+    "manage_plugins",
     "read_image", "screenshot", "computer_use",
 }
 
@@ -4485,6 +4682,11 @@ def build_prompt_with_memory(base_prompt, memory_data, perception_text=None, ski
     )
     res = base_prompt.strip() + chr(10) + chr(10) + capabilities_block.strip()
     res += chr(10) + chr(10) + adapter_block.strip()
+    try:
+        if _PLUGINS.enabled():
+            res += chr(10) + chr(10) + PLUGIN_SYSTEM_GUIDE.strip()
+    except Exception:
+        pass
     if vision_enabled:
         vision_block = """【识图（读图）能力】
 • 你现在使用的 AI 模型支持图片输入（识图），因此额外拥有 read_image 读图工具：主人让你看某张图片/截图/表情包/照片、问你图片里有什么、识别图中文字或画面内容时，调用 read_image 读取本地图片，图片会自动注入对话，你能亲眼看到图中的画面、文字、物体与表情。
@@ -4510,6 +4712,14 @@ def build_prompt_with_memory(base_prompt, memory_data, perception_text=None, ski
         pass
     if skills_block and skills_block.strip():
         res += chr(10) + chr(10) + skills_block.strip()
+    # 插件注入的提示词段落（人格补充、规则、上下文）
+    try:
+        _plugin_blocks = _PLUGINS.prompt_blocks(_plugin_pet())
+    except Exception:
+        _plugin_blocks = []
+    if _plugin_blocks:
+        res += chr(10) + chr(10) + "【插件注入的补充设定】" + chr(10) + \
+            chr(10).join("• " + b for b in _plugin_blocks)
     if perception_text and perception_text.strip():
         res += chr(10) + chr(10) + perception_text.strip()
     res += chr(10) + chr(10) + memory_block.strip()
@@ -4561,6 +4771,12 @@ class DesktopPet:
         self.hist_win = None       # its Toplevel (kept for window-tracking helpers)
         self.hist_entry = None     # its composer Entry (used by send_chat_message)
         self._hist_fonts = None    # lazily built type scale for the history window
+        # 插件系统从实例创建起就能拿到桌宠（含尚未走 start_plugins 的窗口）
+        _PLUGIN_ACTIVE_PET[0] = self
+        try:
+            _PLUGINS.attach_pet(self)
+        except Exception:
+            pass
         self._active_cancel_event = None  # threading.Event of the in-flight chat turn (set to interrupt it)
         self._ai_work_lock = threading.Lock()
         self._ai_work = {}  # live tool loops, including scheduled tasks without a chat window
@@ -4998,6 +5214,9 @@ class DesktopPet:
             self.show_speech("呼哇~(揉揉眼睛) 人！织织已经充满活力清醒啦！(〃'▽'〃)", "默认", 4000)
 
     def find_sprite_path(self, filename):
+        # 插件注册的表情用绝对路径（图在插件自己文件夹里）
+        if os.path.isabs(str(filename)) and os.path.exists(filename):
+            return filename
         path1 = os.path.join(ASSETS_DIR, filename)
         if os.path.exists(path1):
             return path1
@@ -5366,6 +5585,14 @@ class DesktopPet:
         prev = self.current_emotion
         self.current_emotion = emotion_name
         self.config["current_emotion"] = emotion_name
+
+        # 插件事件：表情变化（带重入保护，避免插件内部再切表情造成无限递归）
+        if prev != emotion_name and not getattr(self, "_in_emotion_event", False):
+            self._in_emotion_event = True
+            try:
+                _PLUGINS.emit("emotion_change", self, prev, emotion_name)
+            finally:
+                self._in_emotion_event = False
 
         if self.anim_timer:
             self.root.after_cancel(self.anim_timer)
@@ -7134,6 +7361,239 @@ class DesktopPet:
         """Absolute path of the SKILL.md for a skill folder."""
         return os.path.join(SKILLS_DIR, name, SKILL_ENTRY_FILE)
 
+    # ------------------------------------------------------------------
+    # 🧩 插件系统（pet_plugins）：AI 工具 / 首次加载确认 / 菜单与页面
+    # ------------------------------------------------------------------
+    def start_plugins(self):
+        """桌宠 UI 就绪后加载插件（由 main() 用 root.after 调度）。"""
+        _PLUGIN_ACTIVE_PET[0] = self
+        _PLUGINS.attach_pet(self)
+        if not _PLUGINS.enabled():
+            print("[plugins] 插件功能已关闭（config.json: enable_plugins=false）")
+            return
+        try:
+            _PLUGINS.ensure_plugins_dir()
+            summary = _PLUGINS.load_all(confirm=self._plugin_confirm_consent)
+        except Exception as exc:
+            print(f"[plugins] 插件加载失败: {type(exc).__name__}: {exc}")
+            return
+        loaded = summary.get("loaded") or []
+        failed = summary.get("failed") or []
+        if failed:
+            self.show_speech(f"有 {len(failed)} 个插件没加载成功，去控制中心看看原因吧…",
+                             "疑惑", 4000)
+        elif loaded:
+            self.show_speech(f"织织学会了 {len(loaded)} 个新插件能力！(✧∇✧)", "递爱心", 3500)
+        self._refresh_action_catalog()
+        self._refresh_emotion_tool_enum()
+
+    def _plugin_confirm_consent(self, pending):
+        """首次加载（或内容变化）的插件需要主人确认一次。
+
+        可能在主线程（启动时）或对话工作线程（AI 调用 reload）中被调用，
+        因此对话框一律回到 Tk 主线程执行，并同步等待结果。"""
+        if not pending:
+            return []
+        if threading.current_thread() is threading.main_thread():
+            return self._plugin_consent_dialog(pending)
+        holder = {"names": []}
+        done = threading.Event()
+
+        def build():
+            try:
+                holder["names"] = self._plugin_consent_dialog(pending)
+            except Exception as exc:
+                print(f"[plugins] 确认窗口出错: {exc}")
+            finally:
+                done.set()
+
+        try:
+            self.root.after(0, build)
+        except Exception:
+            return []
+        done.wait(timeout=300)
+        return holder["names"]
+
+    def _plugin_consent_dialog(self, pending):
+        """插件信任确认窗口：勾选要加载的插件。返回被批准的插件名列表。"""
+        dpi = self.dpi_scale
+        win = tk.Toplevel(self.root)
+        win.title("虹语织 · 插件加载确认")
+        w, h = int(620 * dpi), int(min(560, 220 + 58 * len(pending)) * dpi)
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 2)}")
+        win.config(bg=PAL["bg"])
+        win.attributes("-topmost", True)
+        try:
+            if self.app_icon is not None:
+                win.iconphoto(False, self.app_icon)
+        except Exception:
+            pass
+
+        tk.Label(win, text="🧩  发现新的桌宠插件", font=self.f_title, fg=PAL["peri_deep"],
+                 bg=PAL["bg"]).pack(anchor="w", padx=int(20 * dpi), pady=(int(16 * dpi), int(4 * dpi)))
+        tk.Label(win, text="插件就是任意 Python 代码，加载后可以读写你的文件、执行命令、访问网络，"
+                           "等同于把本机权限交给它。\n只加载你信任的插件；确认后桌宠会按内容哈希记住，"
+                           "插件内容变了才会再问一次。",
+                 font=self.f_small, fg=PAL["ink_soft"], bg=PAL["bg"], justify="left",
+                 wraplength=int(570 * dpi)).pack(anchor="w", padx=int(20 * dpi))
+
+        card = tk.Frame(win, bg="#ffffff", highlightthickness=1,
+                        highlightbackground=PAL["line_soft"])
+        card.pack(fill=tk.BOTH, expand=True, padx=int(20 * dpi), pady=int(12 * dpi))
+        inner = tk.Frame(card, bg="#ffffff")
+        inner.pack(fill=tk.BOTH, expand=True, padx=int(14 * dpi), pady=int(12 * dpi))
+
+        variables = []
+        for item in pending:
+            var = tk.BooleanVar(value=True)
+            variables.append((item, var))
+            row = tk.Frame(inner, bg="#ffffff")
+            row.pack(fill=tk.X, pady=int(4 * dpi))
+            tk.Checkbutton(row, variable=var, bg="#ffffff", activebackground="#ffffff",
+                           highlightthickness=0, bd=0).pack(side=tk.LEFT)
+            text = tk.Frame(row, bg="#ffffff")
+            text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            tag = "内容已变化，需要重新确认" if item.get("status") == "changed" else "新插件"
+            tk.Label(text, text=f"{item['name']}（{tag}）", font=self.f_ui_bold,
+                     fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
+            tk.Label(text, text=str(item.get("path") or ""), font=self.f_small,
+                     fg=PAL["ink_dim"], bg="#ffffff", justify="left",
+                     wraplength=int(500 * dpi)).pack(anchor="w")
+
+        result = {"names": []}
+
+        def confirm():
+            result["names"] = [item["name"] for item, var in variables if var.get()]
+            win.destroy()
+
+        def skip_all():
+            result["names"] = []
+            win.destroy()
+
+        bar = tk.Frame(win, bg=PAL["bg"])
+        bar.pack(fill=tk.X, padx=int(20 * dpi), pady=(0, int(16 * dpi)))
+        PastelButton(bar, "✅ 加载所选插件", command=confirm, parent_bg=PAL["bg"],
+                     fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
+                     hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
+                     padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
+        PastelButton(bar, "全部跳过", command=skip_all, parent_bg=PAL["bg"],
+                     fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
+                     hover=PAL["btn_soft_hover"], font=self.f_ui,
+                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT,
+                                                                 padx=(int(8 * dpi), 0))
+        PastelButton(bar, "📂 打开插件文件夹",
+                     command=lambda: self._cc_open_path(PLUGINS_DIR), parent_bg=PAL["bg"],
+                     fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
+                     hover=PAL["btn_soft_hover"], font=self.f_ui,
+                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT)
+
+        win.protocol("WM_DELETE_WINDOW", skip_all)
+        try:
+            win.transient(self.root)
+            win.grab_set()
+        except Exception:
+            pass
+        win.wait_window()
+        return result["names"]
+
+    def _plugin_menu_items(self):
+        """右键快捷菜单里的插件项（回调统一包成无参形式）。"""
+        items = []
+        for entry in _PLUGINS.menu_items("quick"):
+            items.append({
+                "icon": entry["icon"],
+                "label": entry["label"],
+                "callback": (lambda cb=entry["callback"], nm=entry["plugin"]:
+                             self._run_plugin_menu_item(cb, nm)),
+            })
+        return items
+
+    def _run_plugin_menu_item(self, callback, plugin_name):
+        try:
+            callback(self)
+        except Exception as exc:
+            print(f"[plugins] 菜单项出错（{plugin_name}）: {type(exc).__name__}: {exc}")
+            self.show_speech(f"插件 {plugin_name} 的菜单项出错啦…", "疑惑", 3000)
+
+    def _plugin_page_builder(self, entry):
+        """控制中心里某个插件页的构建函数（builder(page, api)）。"""
+        record = _PLUGINS.records.get(entry["plugin"])
+        api = record.api if record is not None else None
+
+        def build(page):
+            try:
+                entry["builder"](page, api)
+            except Exception as exc:
+                tk.Label(page, text=f"插件页面渲染失败：{type(exc).__name__}: {exc}",
+                         font=self.f_ui, fg=PAL["ink_soft"], bg=PAL["bg"],
+                         justify="left").pack(anchor="w", padx=int(26 * self.dpi_scale),
+                                              pady=int(20 * self.dpi_scale))
+        return build
+
+    def _execute_plugins_management(self, args):
+        """manage_plugins 工具实现：查看 / 重载 / 启停 / 打开目录 / 启用示例。"""
+        action = str(args.get("action") or "list").strip().lower()
+        if action not in ("list", "reload", "enable", "disable", "open_folder", "examples"):
+            return {"status": "error",
+                    "message": "未知操作，仅支持 list / reload / enable / disable / open_folder / examples"}
+        if action == "list":
+            status = _PLUGINS.status()
+            return {
+                "status": "success",
+                "plugins_dir": status["plugins_dir"],
+                "enabled": status["enabled"],
+                "trust_required": status["trust_required"],
+                "plugin_tools": status["tools"],
+                "plugin_emotions": status["emotions"],
+                "plugin_actions": status["actions"],
+                "menu_items": status["menu_items"],
+                "prompt_blocks": status["prompt_blocks"],
+                "plugins": status["plugins"],
+                "message": (f"插件目录：{status['plugins_dir']}；"
+                            f"已加载 {sum(1 for p in status['plugins'] if p['status'] == 'loaded')} 个，"
+                            f"失败 {sum(1 for p in status['plugins'] if p['status'] == 'failed')} 个，"
+                            f"未启用 {sum(1 for p in status['plugins'] if p['status'] == 'denied')} 个。"
+                            "把 .py 放进插件目录后用 action=reload 立即生效。"),
+            }
+        if action == "reload":
+            summary = _PLUGINS.reload(confirm=self._plugin_confirm_consent)
+            self._refresh_action_catalog()
+            self._refresh_emotion_tool_enum()
+            failed = summary.get("failed") or []
+            detail = ""
+            if failed:
+                records = [_PLUGINS.records[n].as_dict() for n in failed if n in _PLUGINS.records]
+                detail = "；失败原因：" + "；".join(
+                    f"{r['name']}: {r['error']}" for r in records)
+            return {
+                "status": "success",
+                "loaded": summary.get("loaded"),
+                "failed": failed,
+                "skipped": summary.get("skipped"),
+                "message": (f"插件重载完成：成功 {len(summary.get('loaded') or [])} 个，"
+                            f"失败 {len(failed)} 个，跳过 {len(summary.get('skipped') or [])} 个{detail}"),
+            }
+        if action == "open_folder":
+            _PLUGINS.ensure_plugins_dir()
+            self._cc_open_path(PLUGINS_DIR)
+            return {"status": "success", "path": PLUGINS_DIR, "message": f"已打开插件文件夹：{PLUGINS_DIR}"}
+        if action == "examples":
+            copied = _PLUGINS.enable_examples()
+            if not copied:
+                return {"status": "success", "copied": [],
+                        "message": f"示例插件已在插件目录里（或已全部启用）。目录：{PLUGINS_DIR}"}
+            summary = _PLUGINS.reload(confirm=self._plugin_confirm_consent)
+            self._refresh_action_catalog()
+            self._refresh_emotion_tool_enum()
+            return {"status": "success", "copied": copied,
+                    "loaded": summary.get("loaded"),
+                    "message": f"已复制并加载示例插件：{'、'.join(copied)}"}
+        name = str(args.get("name") or "").strip()
+        if not name:
+            return {"status": "error", "message": f"{action} 需要提供插件名 name"}
+        return _PLUGINS.set_plugin_enabled(name, action == "enable")
+
     def _execute_skills_management(self, args):
         """Skill library engine: list / read / create / modify / append / delete.
 
@@ -7473,6 +7933,55 @@ class DesktopPet:
 
     def _tool_category(self, name):
         return TOOL_CATEGORIES.get(name, "其他")
+
+    # ------------------------------------------------------------------
+    # 插件注册的表情 / 动作同步到工具 schema（模型才知道能用它们）
+    # ------------------------------------------------------------------
+    def _refresh_emotion_catalog(self):
+        """插件注册新表情立绘后：重载立绘并刷新 change_pet_emotion 的可选值。"""
+        try:
+            self.load_all_sprites()
+        except Exception as exc:
+            print(f"[plugins] 重载立绘失败: {exc}")
+        self._refresh_emotion_tool_enum()
+
+    def _refresh_emotion_tool_enum(self):
+        names = [str(e[0]) for e in EMOTIONS]
+        fn = pet_tool_schema("change_pet_emotion")
+        if not fn:
+            return
+        props = fn.setdefault("parameters", {}).setdefault("properties", {})
+        props.setdefault("emotion", {})["enum"] = list(names)
+        fn["description"] = ("自主切换桌宠在屏幕上的立绘表情，并可同步搭配灵动的肢体动作"
+                             "（如上下弹跳、左右摇头抖动、点头、撒娇晃动、瑟瑟发抖等）与不同剧烈程度"
+                             "以配合自己的心境和台词。可选表情：" + ", ".join(names) + "。")
+
+    def _refresh_action_catalog(self):
+        """插件注册新动作后：把动作名并入两个动作工具的枚举。"""
+        plugin_actions = [a for a in _PLUGINS.action_names() if a not in BASE_PET_ACTIONS]
+        names = list(BASE_PET_ACTIONS) + plugin_actions
+        extra = []
+        for action in plugin_actions:
+            info = _PLUGINS.action_info(action) or {}
+            desc = str(info.get("description") or "").strip()
+            extra.append(f"{action}={desc}" if desc else action)
+        for tool_name in ("change_pet_emotion", "perform_pet_action"):
+            fn = pet_tool_schema(tool_name)
+            if not fn:
+                continue
+            props = fn.setdefault("parameters", {}).setdefault("properties", {})
+            action_prop = props.get("action")
+            if not isinstance(action_prop, dict):
+                continue
+            action_prop["enum"] = (list(names) + ["none"]) if tool_name == "change_pet_emotion" \
+                else list(names)
+            if extra:
+                base = ("可选：灵动的肢体动作。" if tool_name == "change_pet_emotion"
+                        else "肢体动作类型：")
+                action_prop["description"] = base + ", ".join(extra + [
+                    "bounce/jump=上下弹跳", "shake=左右摇头", "nod=点头", "wiggle=撒娇摇动",
+                    "shiver=瑟瑟发抖", "sway=左右轻晃", "drop=下沉回弹"]) \
+                    + ("，none=不执行动作" if tool_name == "change_pet_emotion" else "")
 
     def _get_tool_catalog(self):
         """Categorized catalog of every tool for the manager window."""
@@ -7985,8 +8494,18 @@ class DesktopPet:
                     authorized = True
             except (ValueError, TypeError) as exc:
                 return {"status": "error", "error_type": "schedule_unauthorized", "message": str(exc)}
-        result = self._dispatch_tool_call(tool_name, args, _scheduled_authorized=authorized)
+        # 插件包装钩子：before 返回 dict 可短路本次调用，after 可改写结果
+        short_circuit = _PLUGINS.run_before_tool(tool_name, args, self) \
+            if _PLUGINS.has_tools() else None
+        if isinstance(short_circuit, dict):
+            result = short_circuit
+        else:
+            _PLUGINS.emit("tool_call", self, tool_name, args)
+            result = self._dispatch_tool_call(tool_name, args, _scheduled_authorized=authorized)
+            if _PLUGINS.has_tools():
+                result = _PLUGINS.run_after_tool(tool_name, args, result, self)
         self._record_action(tool_name, args, result)
+        _PLUGINS.emit("tool_result", self, tool_name, args, result)
         return result
 
     def _record_action(self, tool_name, args, result):
@@ -8099,6 +8618,21 @@ class DesktopPet:
                 "message": f"操作日志（最新在前，共 {len(log)} 条）"}
 
     def _dispatch_tool_call(self, tool_name, args, _scheduled_authorized=False):
+        """工具分发入口：先问插件（插件可新增工具、也可接管内置工具），
+        插件不处理时再走桌宠内置实现。"""
+        try:
+            if _PLUGINS.has_tools():
+                result = _PLUGINS.dispatch(
+                    tool_name, args, self,
+                    call_original=lambda: self._dispatch_tool_call_builtin(
+                        tool_name, args, _scheduled_authorized))
+                if result is not None:
+                    return result
+        except Exception as exc:  # 插件分发异常不能打断工具链
+            print(f"[plugins] 插件分发出错（{tool_name}）: {type(exc).__name__}: {exc}")
+        return self._dispatch_tool_call_builtin(tool_name, args, _scheduled_authorized)
+
+    def _dispatch_tool_call_builtin(self, tool_name, args, _scheduled_authorized=False):
         if tool_name == "query_api_balance_and_usage":
             base_url = self.config.get("base_url", DEFAULT_BASE_URL).rstrip("/")
             base_v1 = base_url if base_url.endswith("/v1") else f"{base_url}/v1"
@@ -8185,13 +8719,19 @@ class DesktopPet:
                     # 回退模式(无分层素材): 保留旧立绘切换
                     pass
             if action and action != "none":
-                self._tk_call(self.perform_pet_action, action, intensity)
+                # 插件注册的自定义动作优先
+                if not _PLUGINS.run_action(action, self, intensity):
+                    self._tk_call(self.perform_pet_action, action, intensity)
             return {"status": "success", "current_emotion": self.current_emotion, "action": action, "intensity": intensity}
 
         elif tool_name == "perform_pet_action":
             action = args.get("action", "bounce")
             intensity = args.get("intensity", "normal")
+            if _PLUGINS.run_action(action, self, intensity):
+                return {"status": "success", "action": action, "intensity": intensity,
+                        "plugin_action": True}
             self._tk_call(self.perform_pet_action, action, intensity)
+            _PLUGINS.emit("action", self, action, intensity)
             return {"status": "success", "action": action, "intensity": intensity}
 
         elif tool_name == "web_search":
@@ -8829,6 +9369,9 @@ class DesktopPet:
 
         elif tool_name == "manage_skills":
             return self._execute_skills_management(args)
+
+        elif tool_name == "manage_plugins":
+            return self._execute_plugins_management(args)
 
         elif tool_name == "query_action_log":
             return self._query_action_log(args)
@@ -10123,6 +10666,7 @@ class DesktopPet:
         self._hist_write("人: ", "user")
         self._hist_write(msg + os.linesep + os.linesep, "msg")
         self.set_emotion("思考中")
+        _PLUGINS.emit("message", self, msg)
 
         def run_api_chat():
             base_url = self.config.get("base_url", DEFAULT_BASE_URL).rstrip("/")
@@ -10224,6 +10768,7 @@ class DesktopPet:
                     self.show_dialog_line("织织", disp_reply)
                     self._hist_write("虹语织: ", "bot")
                     self._hist_write(disp_reply + os.linesep + os.linesep, "msg")
+                    _PLUGINS.emit("reply", self, disp_reply)
 
                 self._tk_call_for_turn(turn, on_reply)
 
@@ -10392,9 +10937,17 @@ class DesktopPet:
             ("api", "🔌", "API 与模型", self._cc_page_api),
             ("schedule", "⏰", "定时任务", self._cc_page_schedule),
             ("tools", "🛠", "工具能力", self._cc_page_tools),
+            ("plugins", "🧩", "插件扩展", self._cc_page_plugins),
             ("memory", "🧠", "记忆档案", self._cc_page_memory),
             ("system", "⚙️", "系统与关于", self._cc_page_system),
         ]
+        # 插件自己注册的控制中心页面接在固定页之后
+        try:
+            for entry in _PLUGINS.control_center_pages():
+                pages.append((entry["key"], entry["icon"], entry["title"],
+                              self._plugin_page_builder(entry)))
+        except Exception as exc:
+            print(f"[plugins] 插件页面注册失败: {exc}")
         self._cc_pages = {k: (icon, label, fn) for k, icon, label, fn in pages}
         self._cc_nav_items = {}
         nav_w = side_w - int(20 * dpi)
@@ -11247,6 +11800,167 @@ class DesktopPet:
         e_search.bind("<KeyRelease>", lambda e: render(_filter()))
         render("")
 
+    # ---------- page: plugins ----------
+    def _cc_page_plugins(self, page):
+        dpi = self.dpi_scale
+        body, bind_wheel = self._cc_scrollable(page)
+
+        try:
+            status = _PLUGINS.status()
+        except Exception as exc:
+            tk.Label(body, text=f"插件系统状态读取失败：{exc}", font=self.f_ui,
+                     fg=PAL["ink_soft"], bg=PAL["bg"]).pack(anchor="w")
+            return
+        records = status["plugins"]
+        loaded = [r for r in records if r["status"] == "loaded"]
+        failed = [r for r in records if r["status"] == "failed"]
+        denied = [r for r in records if r["status"] == "denied"]
+
+        card = self._cc_card(body, title="插件系统", icon="🧩",
+                             subtitle="放 .py 进插件文件夹即可扩展织织")
+        tk.Label(card, text=f"插件文件夹：{status['plugins_dir']}",
+                 font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
+                 justify="left", wraplength=int(560 * dpi)).pack(anchor="w",
+                                                                  pady=(0, int(6 * dpi)))
+        tk.Label(card, text=f"已加载 {len(loaded)} 个 · 失败 {len(failed)} 个 · 未启用 {len(denied)} 个"
+                            f"　（源码版与 EXE 版同一个目录）",
+                 font=self.f_small, fg=PAL["ink_dim"], bg="#ffffff").pack(anchor="w",
+                                                                          pady=(0, int(8 * dpi)))
+
+        def set_enabled(key, value, message=None):
+            self.config[key] = bool(value)
+            self.save_config()
+            if message:
+                self.show_speech(message, "默认", 2500)
+            self._cc_show("plugins")
+
+        self._cc_toggle_row(card, "🧩", "启用插件系统",
+                            "关闭后所有插件都不加载（插件目录与信任记录会保留）",
+                            bool(status["enabled"]),
+                            lambda v: set_enabled("enable_plugins", v,
+                                                  "插件系统已开启！" if v else "插件系统已关闭，织织回到原始状态。"))
+        self._cc_toggle_row(card, "🔐", "加载新插件前弹窗确认",
+                            "插件是任意 Python 代码，首次加载（或内容变化后）先问过你一次更稳妥",
+                            bool(status["trust_required"]),
+                            lambda v: set_enabled("plugin_trust_required", v))
+
+        row = tk.Frame(card, bg="#ffffff")
+        row.pack(fill=tk.X, pady=(int(8 * dpi), 0))
+        PastelButton(row, "📂 打开插件文件夹", command=self._cc_plugins_open_folder,
+                     parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
+                     hover=PAL["btn_soft_hover"], font=self.f_ui,
+                     padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT,
+                                                                 padx=(0, int(8 * dpi)))
+        PastelButton(row, "🔄 重新加载插件", command=self._cc_plugins_reload,
+                     parent_bg="#ffffff", fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
+                     hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
+                     padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT,
+                                                                 padx=(0, int(8 * dpi)))
+        PastelButton(row, "✨ 启用示例插件", command=self._cc_plugins_examples,
+                     parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
+                     hover=PAL["btn_soft_hover"], font=self.f_ui,
+                     padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT)
+
+        card = self._cc_card(body, title="插件清单", icon="📋",
+                             subtitle="下划线开头的文件不会被加载，示例放在 _examples/")
+        if not records:
+            tk.Label(card, text="还没有插件。把 .py 放进插件文件夹，或点上面的「启用示例插件」看看样例。",
+                     font=self.f_ui, fg=PAL["ink_soft"], bg="#ffffff",
+                     justify="left", wraplength=int(540 * dpi)).pack(anchor="w")
+        for record in records:
+            row = tk.Frame(card, bg="#ffffff")
+            row.pack(fill=tk.X, pady=int(5 * dpi))
+            left = tk.Frame(row, bg="#ffffff")
+            left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            badge = {"loaded": "✅ 已加载", "failed": "❌ 加载失败",
+                     "denied": "⏸ 未启用"}.get(record["status"], record["status"])
+            tk.Label(left, text=f"{record['name']}　{badge}", font=self.f_ui_bold,
+                     fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
+            tk.Label(left, text=str(record["path"]), font=self.f_small, fg=PAL["ink_dim"],
+                     bg="#ffffff", justify="left",
+                     wraplength=int(500 * dpi)).pack(anchor="w")
+            if record["error"]:
+                tk.Label(left, text=f"原因：{record['error']}", font=self.f_small,
+                         fg="#c2566b", bg="#ffffff", justify="left",
+                         wraplength=int(500 * dpi)).pack(anchor="w")
+            ToggleSwitch(row, command=(lambda n=record["name"]:
+                                       self._cc_plugins_toggle(n)),
+                         initial=(record["status"] == "loaded"), bg="#ffffff",
+                         width=int(42 * dpi), height=int(23 * dpi)).pack(
+                             side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)))
+
+        provided = []
+        if status["tools"]:
+            provided.append("工具：" + "、".join(status["tools"]))
+        if status["emotions"]:
+            provided.append("表情：" + "、".join(status["emotions"]))
+        if status["actions"]:
+            provided.append("动作：" + "、".join(status["actions"]))
+        if status["menu_items"]:
+            provided.append(f"右键菜单项：{status['menu_items']} 个")
+        if status["prompt_blocks"]:
+            provided.append(f"提示词段落：{status['prompt_blocks']} 段")
+        provided.append(f"插件页面：{len(status['pages'])} 个")
+        card = self._cc_card(body, title="插件带来的能力", icon="🎁")
+        for line in provided:
+            tk.Label(card, text="• " + line, font=self.f_small, fg=PAL["ink_soft"],
+                     bg="#ffffff", justify="left",
+                     wraplength=int(560 * dpi)).pack(anchor="w", pady=int(1 * dpi))
+        tk.Label(card, text="要让 AI 自己写插件：跟织织说「写个插件实现 XXX」即可，"
+                            "她会读技能库里的「插件开发指南」并按模板写好后重新加载。",
+                 font=self.f_small, fg=PAL["ink_dim"], bg="#ffffff", justify="left",
+                 wraplength=int(560 * dpi)).pack(anchor="w", pady=(int(8 * dpi), 0))
+        bind_wheel()
+
+    def _cc_plugins_open_folder(self):
+        _PLUGINS.ensure_plugins_dir()
+        self._cc_open_path(PLUGINS_DIR)
+
+    def _cc_plugins_reload(self):
+        try:
+            summary = _PLUGINS.reload(confirm=self._plugin_confirm_consent)
+        except Exception as exc:
+            messagebox.showerror("插件重载失败", str(exc), parent=self._cc_win or self.root)
+            return
+        self._refresh_action_catalog()
+        self._refresh_emotion_tool_enum()
+        failed = summary.get("failed") or []
+        self.show_speech(
+            f"插件重载完成：成功 {len(summary.get('loaded') or [])} 个"
+            + (f"，失败 {len(failed)} 个" if failed else "，失败 0 个") + " (✧∇✧)",
+            "默认", 3500)
+        self._cc_show("plugins")
+
+    def _cc_plugins_examples(self):
+        copied = _PLUGINS.enable_examples()
+        if copied:
+            try:
+                _PLUGINS.reload(confirm=self._plugin_confirm_consent)
+            except Exception as exc:
+                print(f"[plugins] 示例加载失败: {exc}")
+            self._refresh_action_catalog()
+            self._refresh_emotion_tool_enum()
+            self.show_speech(f"示例插件已就位：{'、'.join(copied)}", "递爱心", 3500)
+        else:
+            self.show_speech("示例插件都已经在插件文件夹里啦～", "默认", 3000)
+        self._cc_show("plugins")
+
+    def _cc_plugins_toggle(self, name):
+        record = _PLUGINS.records.get(name)
+        enable = not (record is not None and record.status == "loaded")
+        try:
+            result = _PLUGINS.set_plugin_enabled(name, enable)
+        except Exception as exc:
+            result = {"status": "error", "message": str(exc)}
+        if result.get("status") != "success":
+            messagebox.showerror("插件操作失败", result.get("message", "未知错误"),
+                                 parent=self._cc_win or self.root)
+        else:
+            self.show_speech(result.get("message", "插件状态已更新"), "默认", 3000)
+        self._refresh_action_catalog()
+        self._refresh_emotion_tool_enum()
+        self._cc_show("plugins")
+
     # ---------- page: memory ----------
     def _cc_page_memory(self, page):
         dpi = self.dpi_scale
@@ -11641,6 +12355,12 @@ class DesktopPet:
     def quit_pet(self):
         self.monitor_running = False
         self._interrupt_current_turn()
+        # 插件退出钩子：先让插件保存状态/收尾，再卸载模块
+        try:
+            _PLUGINS.emit("shutdown", self)
+            _PLUGINS.unload_all()
+        except Exception as exc:
+            print(f"[plugins] 退出清理出错: {type(exc).__name__}: {exc}")
         if hasattr(self, "_harness_monitor_wake"):
             self._harness_monitor_wake.set()
         try:
@@ -11670,6 +12390,11 @@ def main():
     enable_dpi_awareness()  # crisp text on HiDPI displays
     root = tk.Tk()
     app = DesktopPet(root)
+    # 插件在 UI 就绪后加载：新插件需要主人确认，加载完再触发 startup 事件
+    def _start_plugins():
+        app.start_plugins()
+        _PLUGINS.emit("startup", app)
+    root.after(200, _start_plugins)
     root.mainloop()
 
 if __name__ == "__main__":

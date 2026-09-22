@@ -47,3 +47,7 @@ description 两个字段，然后接 Markdown 正文：
   ---
 - 复杂技能可以把参考资料/脚本放在技能文件夹内（如 references/api.md），
   织织用 manage_skills action=read 的 file 参数按相对路径读取。
+
+相关：给桌宠加"新能力"（工具、界面、外观、事件监听）用插件而不是技能——
+把 .py 放进程序旁的 plugins/ 文件夹即可，写法见技能库里的「插件开发指南」
+（resources/skills/插件开发指南/SKILL.md）。技能管"怎么做"，插件管"能做什么"。

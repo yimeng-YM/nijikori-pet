@@ -14,6 +14,8 @@ a = Analysis(
     datas=[
         (str(RESOURCES / 'assets'), 'assets'),
         (str(SOURCE / 'pet_tools'), 'pet_tools'),
+        (str(SOURCE / 'pet_plugins'), 'pet_plugins'),
+        (str(RESOURCES / 'plugins'), 'plugins'),
         (str(RESOURCES / 'prompt.txt'), '.'),
         (str(RESOURCES / 'skills/配置文件管理'), 'skills/配置文件管理'),
         (str(RESOURCES / 'skills/项目接手法'), 'skills/项目接手法'),
@@ -22,6 +24,7 @@ a = Analysis(
         (str(RESOURCES / 'skills/web-access'), 'skills/web-access'),
         (str(RESOURCES / 'skills/代码编辑流程手册'), 'skills/代码编辑流程手册'),
         (str(RESOURCES / 'skills/computer-use'), 'skills/computer-use'),
+        (str(RESOURCES / 'skills/插件开发指南'), 'skills/插件开发指南'),
     ],
     hiddenimports=['pystray._win32', 'window_capture'],
     hookspath=[],

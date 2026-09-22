@@ -19,6 +19,7 @@ def validate_config(data):
             raise ConfigError(f'{key} 必须是文本')
     for key, value in data.items():
         if (key.startswith('enable_') or key in ('always_on_top', 'confirm_before_command',
+                                                'plugin_trust_required',
                                                 'delete_easter_egg_move_to_file')):
             if not isinstance(value, bool):
                 raise ConfigError(f'{key} 必须是 true 或 false')

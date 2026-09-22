@@ -21,6 +21,25 @@ class AppPaths:
     def prompt_file(self):
         return self.resource_dir / "prompt.txt"
 
+    @property
+    def plugins_dir(self):
+        """User plugin folder: beside the exe (portable) / at the project root."""
+        return self.app_dir / "plugins"
+
+    @property
+    def plugin_templates_dir(self):
+        """Bundled example plugins, seeded into plugins/_examples on first run."""
+        return self.resource_dir / "plugins"
+
+    @property
+    def plugin_state_dir(self):
+        """Per-plugin persistent state.
+
+        Must not be named "plugins": in the frozen layout data_dir *is* the exe
+        directory, so it would collide with the user plugin folder.
+        """
+        return self.data_dir / "plugin_state"
+
 
 def resolve_app_paths(*, source_file=None, executable=None, bundle_dir=None, frozen=None):
     frozen = getattr(sys, "frozen", False) if frozen is None else frozen

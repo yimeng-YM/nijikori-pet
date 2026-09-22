@@ -1,0 +1,139 @@
+{
+  "title": "插件系统（pet_plugins）改造验证记录",
+  "date": "2026-09-22",
+  "feature": "桌宠能力模块化：加载 plugins 文件夹内的 .py 来新增或改写能力，源码版与 EXE 版通用",
+  "baseline": {
+    "before": {"tests": 145, "result": "OK"},
+    "after": {"tests": 179, "result": "OK"},
+    "new_tests": 34,
+    "new_test_file": "tests/test_plugins.py"
+  },
+  "layers": [
+    {
+      "name": "自动化回归（源码）",
+      "command": "python -B -m unittest discover -s tests",
+      "result": "Ran 179 tests · OK",
+      "highlights": [
+        "插件发现：单文件 / 文件夹插件识别，_ 与 . 开头自动跳过",
+        "内容指纹：文件夹插件按相对路径+内容汇总 sha256，增删改都会变化",
+        "信任机制：新插件询问一次 → 记住；内容变化 → 重新询问；拒绝后不再打扰；可用 config 关闭",
+        "注册能力：新工具 / 接管内置工具（含 call_original）/ before-after 包装 / 通配包装",
+        "提示词：字符串与可调用两种段落，when 条件生效",
+        "外观：注册表情（绝对路径校验）、注册自定义动作并并入工具枚举",
+        "失败回滚：注册到一半抛异常 → 工具表、分类、提示词、菜单、页面、表情、动作、事件钩子全部撤销",
+        "热重载：reload 幂等、无重复注册、工具表回落到基线",
+        "状态持久化：api.state + save_state 往返",
+        "main.py 接线：manage_plugins 工具、PET_TOOLS 变更、提示词注入、_dispatch_tool_call 插件优先、插件异常不影响内置工具"
+      ]
+    },
+    {
+      "name": "GUI 真实界面自动冒烟（源码版真实 Tk 窗口）",
+      "command": "python -B tools/check_plugins_gui.py",
+      "result": "9 / 9 通过 · 退出码 0",
+      "checks": [
+        "首次加载确认弹窗可打开、可勾选、正确返回被批准的插件名",
+        "确认弹窗「全部跳过」返回空列表",
+        "插件通过真实 load_all 流程注册成功",
+        "控制中心「插件扩展」页真实渲染（50 个控件）",
+        "插件清单显示插件名与「✅ 已加载」状态",
+        "插件自定义控制中心页面注册并渲染成功",
+        "插件菜单项进入快捷菜单数据",
+        "快捷菜单真实渲染出插件项（排在固定项之前）"
+      ],
+      "note": "使用临时插件目录与临时信任库，不读写项目里的 plugins/ 与 data/；全程自动调度点击，无需人工操作。"
+    },
+    {
+      "name": "EXE 端到端（冻结版真实运行）",
+      "command": "python -B tools/build_exe.py → 启动 dist\\虹语织-桌宠v2.exe（约 26 秒后终止）",
+      "result": "通过",
+      "evidence": {
+        "build_seconds": 28.53,
+        "exe_bytes": 56623293,
+        "plugins_dir_created_beside_exe": "dist\\plugins",
+        "seeded": [
+          "dist\\plugins\\README.txt",
+          "dist\\plugins\\_examples\\example_hello.py",
+          "dist\\plugins\\_examples\\example_override.py",
+          "dist\\plugins\\_examples\\example_appearance.py"
+        ],
+        "examples_not_auto_loaded": "正确（_examples 下不加载）",
+        "plugin_loaded_log": [
+          "[example_hello] 已加载（示例插件 ①）",
+          "[system] 加载完成：成功 1，失败 0，跳过 0",
+          "[example_hello] 桌宠已启动"
+        ],
+        "two_plugins": "state_probe + example_hello → 成功 2，失败 0",
+        "state_file": "dist\\plugin_state\\state_probe.json",
+        "state_content": {
+          "probe": true,
+          "plugin_dir": "dist\\plugins",
+          "data_dir": "dist",
+          "is_frozen": true
+        },
+        "bundled_in_exe": [
+          "pet_plugins\\*.py",
+          "plugins\\example_hello.py / example_override.py / example_appearance.py",
+          "skills\\插件开发指南\\SKILL.md"
+        ],
+        "skill_seeded_beside_exe": "dist\\skills\\插件开发指南\\SKILL.md"
+      }
+    }
+  ],
+  "bugs_found_and_fixed_during_verification": [
+    {
+      "id": "state-dir-collision",
+      "severity": "high",
+      "found_by": "EXE 端到端运行",
+      "detail": "冻结版 data_dir 就是 exe 目录，插件状态目录原名 'plugins' 会与用户插件目录重合，写状态文件会污染插件文件夹。",
+      "fix": "状态目录改为 'plugin_state'（pet_plugins/manager.py + pet_paths.plugin_state_dir），并补断言 plugin_state_dir != plugins_dir 的测试。"
+    },
+    {
+      "id": "stale-registration-on-unload",
+      "severity": "high",
+      "found_by": "单元测试（第二次 load_all 失败：工具已存在）",
+      "detail": "unload_all() 未回滚注册表，重新加载同名插件会因工具重名而失败。",
+      "fix": "unload_all() 逐个调用 _unregister()。"
+    },
+    {
+      "id": "trust-disabled-branch-never-loaded",
+      "severity": "medium",
+      "found_by": "单元测试",
+      "detail": "plugin_trust_required=false 时新插件只是被记录路径，从未进入加载队列。",
+      "fix": "关闭确认时直接判定为 trusted 并加入待加载列表。"
+    },
+    {
+      "id": "confirm-callback-received-internal-objects",
+      "severity": "low",
+      "found_by": "单元测试",
+      "detail": "confirm 回调收到的是内部 PluginCandidate 对象，外部（含 GUI/插件）无法按契约读取字段。",
+      "fix": "改为传入 {name, path, entry, status, is_package, digest} 的普通 dict 列表。"
+    },
+    {
+      "id": "plugin-ui-kit-requires-attach-pet",
+      "severity": "high",
+      "found_by": "GUI 真实界面冒烟",
+      "detail": "api.pet_ui() 依赖 attach_pet 注入桌宠实例；若插件页面在 attach_pet 之前渲染，ui_kit 返回空字典，插件页面报 KeyError: 'card'。",
+      "fix": "DesktopPet.__init__ 里即设置 _PLUGIN_ACTIVE_PET[0] = self 并调用 attach_pet(self)，不再只依赖 start_plugins。"
+    },
+    {
+      "id": "gitignore-over-match",
+      "severity": "low",
+      "found_by": "git status 复核",
+      "detail": ".gitignore 中 'plugins/' 未锚定根目录，连带忽略了 resources/plugins/ 示例插件。",
+      "fix": "改为 '/plugins/'。"
+    }
+  ],
+  "regression_risk_notes": [
+    "原生工具行为未改变：插件未注册时 _dispatch_tool_call 直接走原 _dispatch_tool_call_builtin 路径。",
+    "新增 1 个工具 manage_plugins（原生工具数 38 → 39），已在 WORK_LOG_TOOLS 与 TOOL_CATEGORIES 登记。",
+    "change_pet_emotion / perform_pet_action 增加插件动作优先分支，未注册插件动作时行为与原来一致。",
+    "set_emotion 增加 emotion_change 事件（带重入保护），默认静默。",
+    "quit_pet 增加 shutdown 事件与 unload_all，之后流程不变。"
+  ],
+  "manual_checks_recommended": [
+    "把真实插件放进插件目录、重启桌宠，确认启动时弹窗与后续静默加载符合直觉。",
+    "在控制中心「🧩 插件扩展」页点「✨ 启用示例插件」，确认 3 个示例被复制并加载。",
+    "启用 example_appearance 后确认新表情「插件气泡」与动作 plugin_bounce_twice 生效。",
+    "启用 example_override 后确认打开非白名单网址会被拦下、时间工具带插件附言。"
+  ]
+}

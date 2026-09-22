@@ -5,6 +5,8 @@ action_log.json
 data/*
 !data/config.example.json
 !data/README.md
+# 用户插件目录（运行时生成，放在项目根；示例模板在 resources/plugins/）
+/plugins/
 __pycache__/
 *.py[cod]
 build/
