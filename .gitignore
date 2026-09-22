@@ -1,0 +1,18 @@
+# Runtime data and generated artifacts
+config.json
+memory.json
+action_log.json
+data/*
+!data/config.example.json
+!data/README.md
+__pycache__/
+*.py[cod]
+build/
+tools/.build/
+dist/
+release/
+.venv/
+node_modules/
+*.log
+*.tmp
+*.bak

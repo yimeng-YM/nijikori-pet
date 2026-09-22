@@ -1,0 +1,15 @@
+{
+  "exe_path": "E:\\Harness\\Nijikori pet\\release\\虹语织-桌宠v2-本地搜索-20260906_211508.exe",
+  "dist_exe_path": "E:\\Harness\\Nijikori pet\\dist\\虹语织-桌宠v2.exe",
+  "size_bytes": 55385705,
+  "sha256": "bb2c7d52c3f1e39a9ab808f39c1b31797e3277f9e07ba99c475e79d9b25c42a2",
+  "build_seconds": 33.91,
+  "tests_passed": 30,
+  "live_keyword_search_ms": {
+    "Python requests SSLError": 1360,
+    "Python tkinter documentation": 1172,
+    "北京 天气预报": 1531
+  },
+  "packaged_prompt_checked": true,
+  "verification_limit": "Keyword rules and prompt assembly tested without requesting a chat model. Existing pet processes were not restarted."
+}

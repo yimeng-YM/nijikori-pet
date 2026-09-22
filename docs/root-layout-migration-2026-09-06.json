@@ -1,0 +1,111 @@
+{
+  "organized_at": "2026-09-06T21:41:43.4976869+08:00",
+  "recovery_directory": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout",
+  "data_hashes": {
+    "memory.json": "F0346940A19C045433154531ECBA23709CFF60911E1C30BDE1C708F8EA330894",
+    "action_log.json": "B4E5E491713413C867029F45F69D768A8E9D5D4B5F4F5D14F9ED00CFEA07F67F",
+    "config.json": "742D891E5DE36D3C65002A55D156F398631619A326940EFE98DA31A7FC972320"
+  },
+  "moves": [
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\assets",
+      "Destination": "E:\\Harness\\Nijikori pet\\resources\\assets",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\skills",
+      "Destination": "E:\\Harness\\Nijikori pet\\resources\\skills",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\prompt.txt",
+      "Destination": "E:\\Harness\\Nijikori pet\\resources\\prompt.txt",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\config.json",
+      "Destination": "E:\\Harness\\Nijikori pet\\data\\config.json",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\memory.json",
+      "Destination": "E:\\Harness\\Nijikori pet\\data\\memory.json",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\action_log.json",
+      "Destination": "E:\\Harness\\Nijikori pet\\data\\action_log.json",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\config.example.json",
+      "Destination": "E:\\Harness\\Nijikori pet\\data\\config.example.json",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\使用说明.txt",
+      "Destination": "E:\\Harness\\Nijikori pet\\docs\\使用说明.txt",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\README.md",
+      "Destination": "E:\\Harness\\Nijikori pet\\docs\\功能说明.md",
+      "Kind": "organized"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\main.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\main.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\alpha_window.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\alpha_window.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\layered_pet.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\layered_pet.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\window_capture.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\window_capture.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\pet_config.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\pet_config.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\pet_io.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\pet_io.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\pet_runtime.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\pet_runtime.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\pet_search.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\pet_search.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\pet_search_prompt.py",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\pet_search_prompt.py",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\pet_tools",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\pet_tools",
+      "Kind": "recovery"
+    },
+    {
+      "Source": "E:\\Harness\\Nijikori pet\\虹语织.spec",
+      "Destination": "E:\\Harness\\.Nijikori-recovery\\20260906_214143-root-layout\\虹语织.spec",
+      "Kind": "recovery"
+    }
+  ]
+}

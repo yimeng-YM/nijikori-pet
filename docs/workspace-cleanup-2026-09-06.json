@@ -1,0 +1,55 @@
+{
+  "archive_root": "E:\\Harness\\.Nijikori-recovery\\20260906_211735",
+  "items": [
+    {
+      "source": "E:\\Harness\\Nijikori pet\\build",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\build",
+      "files": 24,
+      "bytes": 116011361
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\__pycache__",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\__pycache__",
+      "files": 8,
+      "bytes": 841842
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\pet_tools\\__pycache__",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\pet_tools\\__pycache__",
+      "files": 4,
+      "bytes": 51614
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\tests\\__pycache__",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\tests\\__pycache__",
+      "files": 1,
+      "bytes": 39271
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\tools\\__pycache__",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\tools\\__pycache__",
+      "files": 1,
+      "bytes": 2645
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\tools\\_skills_backup",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\tools\\_skills_backup",
+      "files": 4,
+      "bytes": 15598
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\tools\\_exe.py",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\tools\\_exe.py",
+      "files": 1,
+      "bytes": 1731
+    },
+    {
+      "source": "E:\\Harness\\Nijikori pet\\dist\\_layered_diag.txt",
+      "destination": "E:\\Harness\\.Nijikori-recovery\\20260906_211735\\dist\\_layered_diag.txt",
+      "files": 1,
+      "bytes": 32
+    }
+  ],
+  "total_bytes": 116964094,
+  "mode": "reversible_move"
+}

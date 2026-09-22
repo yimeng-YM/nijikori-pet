@@ -1,0 +1,33 @@
+{
+  "base_url": "https://api.kourichat.com/v1",
+  "api_key": "",
+  "model": "gemini-3.7-flash",
+  "web_search_timeout_secs": 8,
+  "web_search_max_results": 5,
+  "pet_size": 180,
+  "x": 1589,
+  "y": 352,
+  "current_emotion": "默认",
+  "pet_fps": 10,
+  "low_balance_threshold": 10.0,
+  "balance_check_interval_mins": 5.0,
+  "sleep_timeout_mins": 10.0,
+  "enable_wandering": true,
+  "enable_floating": true,
+  "enable_mouse_facing": true,
+  "confirm_before_command": false,
+  "wander_interval_secs": 20.0,
+  "max_tool_rounds": 80,
+  "always_on_top": true,
+  "vision_supported": false,
+  "harness_dsh_path": "",
+  "chat_size": {
+    "w": 756,
+    "h": 359
+  },
+  "reminders": [],
+  "enable_harness_monitor": true,
+  "harness_monitor_source": "sessions",
+  "harness_sessions_dir": "~/.dsh/sessions",
+  "harness_status_url": "http://127.0.0.1:3080/api/dshpet/status"
+}
