@@ -27,6 +27,7 @@ import shutil
 import tempfile
 import queue
 import copy
+import functools
 import pet_io
 import pet_config
 from pet_search import perform_web_search, DEFAULT_TIMEOUT as SEARCH_TIMEOUT, DEFAULT_LIMIT as SEARCH_LIMIT
@@ -11828,14 +11829,26 @@ class DesktopPet:
                                                                           pady=(0, int(8 * dpi)))
 
         def set_enabled(key, value, message=None):
-            self.config[key] = bool(value)
+            value = bool(value)
+            self.config[key] = value
             self.save_config()
+            if key == "enable_plugins":
+                # 总开关要立即生效：关掉就把已加载的插件全部卸下并回滚能力，打开就重新加载
+                try:
+                    if value:
+                        _PLUGINS.load_all(confirm=self._plugin_confirm_consent)
+                    else:
+                        _PLUGINS.disable_all()
+                except Exception as exc:
+                    print(f"[plugins] 切换插件总开关失败: {type(exc).__name__}: {exc}")
+                self._refresh_action_catalog()
+                self._refresh_emotion_tool_enum()
             if message:
                 self.show_speech(message, "默认", 2500)
-            self._cc_show("plugins")
+            self._cc_plugins_schedule_refresh()
 
         self._cc_toggle_row(card, "🧩", "启用插件系统",
-                            "关闭后所有插件都不加载（插件目录与信任记录会保留）",
+                            "关掉会立即卸下所有插件、把能力还原成原始状态（插件目录与信任记录保留）",
                             bool(status["enabled"]),
                             lambda v: set_enabled("enable_plugins", v,
                                                   "插件系统已开启！" if v else "插件系统已关闭，织织回到原始状态。"))
@@ -11883,8 +11896,9 @@ class DesktopPet:
                 tk.Label(left, text=f"原因：{record['error']}", font=self.f_small,
                          fg="#c2566b", bg="#ffffff", justify="left",
                          wraplength=int(500 * dpi)).pack(anchor="w")
-            ToggleSwitch(row, command=(lambda n=record["name"]:
-                                       self._cc_plugins_toggle(n)),
+            # ToggleSwitch 会把新状态作为第一个参数回传，所以插件名用 partial 绑定
+            ToggleSwitch(row, command=functools.partial(self._cc_plugins_toggle,
+                                                        record["name"]),
                          initial=(record["status"] == "loaded"), bg="#ffffff",
                          width=int(42 * dpi), height=int(23 * dpi)).pack(
                              side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)))
@@ -11945,11 +11959,20 @@ class DesktopPet:
             self.show_speech("示例插件都已经在插件文件夹里啦～", "默认", 3000)
         self._cc_show("plugins")
 
-    def _cc_plugins_toggle(self, name):
-        record = _PLUGINS.records.get(name)
-        enable = not (record is not None and record.status == "loaded")
+    def _cc_plugins_toggle(self, name, enabled=None):
+        """插件清单里的启用/停用开关。
+
+        ToggleSwitch 点击时会把新状态作为第一个参数回传，所以插件名在这里是
+        第一个参数、状态是第二个（页面里用 functools.partial 绑定插件名）。
+        """
+        if not isinstance(name, str) or not name.strip():
+            print(f"[plugins] 插件开关收到无效插件名: {name!r}")
+            return
+        if enabled is None:                      # 直接调用（无开关状态）时按当前状态取反
+            record = _PLUGINS.records.get(name)
+            enabled = not (record is not None and record.status == "loaded")
         try:
-            result = _PLUGINS.set_plugin_enabled(name, enable)
+            result = _PLUGINS.set_plugin_enabled(name, bool(enabled))
         except Exception as exc:
             result = {"status": "error", "message": str(exc)}
         if result.get("status") != "success":
@@ -11959,7 +11982,31 @@ class DesktopPet:
             self.show_speech(result.get("message", "插件状态已更新"), "默认", 3000)
         self._refresh_action_catalog()
         self._refresh_emotion_tool_enum()
-        self._cc_show("plugins")
+        self._cc_plugins_schedule_refresh()
+
+    def _cc_plugins_schedule_refresh(self, delay=220):
+        """稍后重建插件页。
+
+        开关点击后立刻销毁页面会让 ToggleSwitch 的滑动动画回调落到已销毁的
+        控件上（Tk 报 invalid command name / TclError），所以等动画播完再重建；
+        连点多次只重建一次。
+        """
+        if getattr(self, "_cc_plugins_refresh_job", None) is not None:
+            return
+
+        def run():
+            self._cc_plugins_refresh_job = None
+            try:
+                if (getattr(self, "_cc_win", None) is not None
+                        and getattr(self, "_cc_current", None) == "plugins"):
+                    self._cc_show("plugins")
+            except Exception:
+                pass
+
+        try:
+            self._cc_plugins_refresh_job = self.root.after(int(delay), run)
+        except Exception:
+            self._cc_plugins_refresh_job = None
 
     # ---------- page: memory ----------
     def _cc_page_memory(self, page):

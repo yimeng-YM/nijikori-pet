@@ -89,6 +89,27 @@ def main_check():
     manager._log_path = str(Path(TMP.name) / "plugins.log")   # 不污染本机 data/plugins.log
     manager.ensure_plugins_dir()
 
+    # 任何错误弹窗都会阻塞自动化：换成记录，由检查判定为失败
+    dialogs = []
+    real_showerror = main.messagebox.showerror
+
+    def fake_showerror(title=None, message=None, **kwargs):
+        dialogs.append(f"{title}: {message}")
+        print(f"    [错误弹窗被拦截] {title}: {message}")
+
+    main.messagebox.showerror = fake_showerror
+    main.messagebox.showwarning = fake_showerror
+    # 这个检查会点「启用插件系统」总开关，而它内部会 save_config() 写真实
+    # data/config.json —— 验证脚本绝不能改主人的配置，这里改成只改内存。
+    real_save_config = pet.save_config
+
+    def memory_only_save_config():
+        return True
+
+    pet.save_config = memory_only_save_config
+    state = {"dialogs": dialogs, "real_showerror": real_showerror,
+             "real_save_config": real_save_config}
+
     # 造一个插件：提供工具 + 菜单项 + 控制中心页面 + 提示词
     write_plugin(plugins_dir, "gui_plugin", """
         def register(api):
@@ -116,14 +137,22 @@ def main_check():
         step_control_center_page,
         step_plugin_page,
         step_quick_menu,
+        # 真实点击插件清单里的启用/停用开关（曾被误传布尔值当插件名）
+        step_toggle_plugin_off,
+        step_verify_plugin_disabled,
+        step_toggle_plugin_on,
+        step_verify_plugin_enabled,
+        # 总开关：关掉应立即卸下能力，打开应恢复
+        step_master_switch_off,
+        step_master_switch_on,
         step_finish,
     ])
-    state = {}
 
     def run_next():
         try:
             step = next(steps)
         except StopIteration:
+            root.quit()          # 步骤跑完一定收工，某一步出错也不会挂住窗口
             return
         try:
             step(pet, state)
@@ -132,6 +161,7 @@ def main_check():
         root.after(400, run_next)
 
     root.after(600, run_next)
+    root.after(60000, root.quit)     # 兜底：无论发生什么都不要挂住
     root.mainloop()
 
     print("\n==== 汇总 ====")
@@ -247,9 +277,132 @@ def step_quick_menu(pet, state):
     menu._dismiss()
 
 
+def find_plugin_switch(pet, plugin_name):
+    """在「插件扩展」页里找到某个插件那一行的 ToggleSwitch。
+
+    页面用 functools.partial 把插件名绑在开关命令上，据此精确定位。"""
+    page = pet._cc_page_frame
+    for item in walk(page) if page is not None else []:
+        if type(item).__name__ != "ToggleSwitch":
+            continue
+        cmd = getattr(item, "_cmd", None)
+        args = getattr(cmd, "args", ())        # functools.partial
+        if args and args[0] == plugin_name:
+            return item
+    return None
+
+
+def step_toggle_plugin_off(pet, state):
+    """真实点击插件清单里的开关（复现"没有找到插件：False"那个缺陷路径）。"""
+    pet._cc_show("plugins")
+    pet.root.update()
+    switch = find_plugin_switch(pet, "gui_plugin")
+    record("插件行的开关可定位", switch is not None)
+    if switch is None:
+        return
+    switch._on_click()                          # 与真实鼠标点击走同一条路径
+    pet.root.update()
+    state["dialogs"].clear()
+
+
+def step_verify_plugin_disabled(pet, state):
+    """开关拨到关：插件应被卸下，且不能弹出错误对话框。"""
+    pet._cc_show("plugins")                     # 页面重建由 220ms 定时器触发，这里手动刷新
+    pet.root.update()
+    record("关闭插件没有弹出错误弹窗", not state["dialogs"], str(state["dialogs"])[:120])
+    record("关闭后插件已从插件表卸下",
+           not any(t["function"]["name"] == "gui_tool" for t in main.PET_TOOLS))
+    record("关闭后插件状态变为未启用",
+           (main._PLUGINS.records.get("gui_plugin") or None) is not None
+           and main._PLUGINS.records["gui_plugin"].status != "loaded",
+           str(getattr(main._PLUGINS.records.get("gui_plugin"), "status", "gone")))
+    record("关闭后提示词段落已移除", main._PLUGINS.prompt_blocks(None) == [])
+
+
+def step_toggle_plugin_on(pet, state):
+    """再点一次开关：插件应重新加载。"""
+    switch = find_plugin_switch(pet, "gui_plugin")
+    record("停用后的开关仍可定位", switch is not None)
+    if switch is None:
+        return
+    switch._on_click()
+    pet.root.update()
+    state["dialogs"].clear()
+
+
+def step_verify_plugin_enabled(pet, state):
+    pet._cc_show("plugins")
+    pet.root.update()
+    record("重新启用插件没有弹出错误弹窗", not state["dialogs"], str(state["dialogs"])[:120])
+    record("重新启用后工具回到插件表",
+           any(t["function"]["name"] == "gui_tool" for t in main.PET_TOOLS))
+    record("重新启用后插件状态为已加载",
+           getattr(main._PLUGINS.records.get("gui_plugin"), "status", None) == "loaded")
+
+
+def find_toggle_by_label(pet, label_text):
+    """按设置行的标题文字找到对应的 ToggleSwitch。
+
+    注意：控制中心页头还有一个「窗口置顶」开关，不能简单取"第一个开关"。
+    """
+    page = pet._cc_page_frame
+    for item in walk(page) if page is not None else []:
+        if not isinstance(item, tk.Label):
+            continue
+        try:
+            text = str(item.cget("text"))
+        except Exception:
+            continue
+        if label_text not in text:
+            continue
+        row = item.master.master          # left frame -> row
+        for sibling in row.winfo_children():
+            if type(sibling).__name__ == "ToggleSwitch":
+                return sibling
+    return None
+
+
+def click_master_switch(pet):
+    """点击「启用插件系统」总开关。"""
+    switch = find_toggle_by_label(pet, "启用插件系统")
+    if switch is None:
+        return False
+    switch._on_click()
+    return True
+
+
+def step_master_switch_off(pet, state):
+    """总开关拨到关：插件能力应立即卸下（而不是等重启）。"""
+    pet._cc_show("plugins")
+    pet.root.update()
+    state["dialogs"].clear()
+    ok = click_master_switch(pet)
+    record("总开关可点击", ok)
+    pet.root.update()
+    record("关闭总开关没有弹出错误弹窗", not state["dialogs"], str(state["dialogs"])[:120])
+    record("关闭总开关后插件能力立即失效",
+           not any(t["function"]["name"] == "gui_tool" for t in main.PET_TOOLS))
+    record("关闭总开关写入了 config", pet.config.get("enable_plugins") is False,
+           str(pet.config.get("enable_plugins")))
+
+
+def step_master_switch_on(pet, state):
+    """总开关拨回开：插件应重新加载。"""
+    pet._cc_show("plugins")
+    pet.root.update()
+    state["dialogs"].clear()
+    click_master_switch(pet)
+    pet.root.update()
+    record("打开总开关没有弹出错误弹窗", not state["dialogs"], str(state["dialogs"])[:120])
+    record("打开总开关后插件能力恢复",
+           any(t["function"]["name"] == "gui_tool" for t in main.PET_TOOLS))
+
+
 def step_finish(pet, state):
-    main._PLUGINS.unload_all()
-    main._PLUGINS._restore_baseline()
+    main.messagebox.showerror = state["real_showerror"]
+    main.messagebox.showwarning = state["real_showerror"]
+    pet.save_config = state["real_save_config"]
+    main._PLUGINS.disable_all()
     pet._cc_close()
     pet.root.quit()
 

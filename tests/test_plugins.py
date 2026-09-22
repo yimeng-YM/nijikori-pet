@@ -436,6 +436,30 @@ class PluginRegistryTests(unittest.TestCase):
         self.assertEqual(sum(t["function"]["name"] == "plugin_echo" for t in self.tools), 1)
         self.assertEqual(len(self.manager.prompt_blocks(None)), 1)
 
+    def test_disable_all_restores_baseline_and_stops_loading(self):
+        """控制中心总开关关掉后：能力立即还原，且不再加载任何插件。"""
+        self._load("echo", TOOL_PLUGIN)
+        self.assertTrue(any(t["function"]["name"] == "plugin_echo" for t in self.tools))
+        self.cfg["enable_plugins"] = False
+
+        summary = self.manager.disable_all()
+        self.assertTrue(summary.get("disabled"))
+        self.assertFalse(any(t["function"]["name"] == "plugin_echo" for t in self.tools))
+        self.assertEqual(self.manager.prompt_blocks(None), [])
+        self.assertEqual(self.manager.records, {})
+
+        # 总开关关着时，load_all 不再加载
+        again = self.manager.load_all(confirm=lambda pending: [p["name"] for p in pending])
+        self.assertTrue(again.get("disabled"))
+        self.assertFalse(any(t["function"]["name"] == "plugin_echo" for t in self.tools))
+
+    def test_disable_all_then_reload_works(self):
+        self._load("echo", TOOL_PLUGIN)
+        self.manager.disable_all()
+        summary = self.manager.reload(confirm=lambda pending: [p["name"] for p in pending])
+        self.assertEqual(summary["loaded"], ["echo"])
+        self.assertEqual(sum(t["function"]["name"] == "plugin_echo" for t in self.tools), 1)
+
     def test_disable_and_enable_one_plugin(self):
         self._load("echo", TOOL_PLUGIN)
         self.assertEqual(self.manager.set_plugin_enabled("echo", False)["status"], "success")

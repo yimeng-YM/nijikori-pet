@@ -4,15 +4,15 @@
   "feature": "桌宠能力模块化：加载 plugins 文件夹内的 .py 来新增或改写能力，源码版与 EXE 版通用",
   "baseline": {
     "before": {"tests": 145, "result": "OK"},
-    "after": {"tests": 179, "result": "OK"},
-    "new_tests": 34,
+    "after": {"tests": 181, "result": "OK"},
+    "new_tests": 36,
     "new_test_file": "tests/test_plugins.py"
   },
   "layers": [
     {
       "name": "自动化回归（源码）",
       "command": "python -B -m unittest discover -s tests",
-      "result": "Ran 179 tests · OK",
+      "result": "Ran 181 tests · OK",
       "highlights": [
         "插件发现：单文件 / 文件夹插件识别，_ 与 . 开头自动跳过",
         "内容指纹：文件夹插件按相对路径+内容汇总 sha256，增删改都会变化",
@@ -22,6 +22,7 @@
         "外观：注册表情（绝对路径校验）、注册自定义动作并并入工具枚举",
         "失败回滚：注册到一半抛异常 → 工具表、分类、提示词、菜单、页面、表情、动作、事件钩子全部撤销",
         "热重载：reload 幂等、无重复注册、工具表回落到基线",
+        "总开关：disable_all 立即卸下全部插件并还原基线；关闭后 load_all 不再加载",
         "状态持久化：api.state + save_state 往返",
         "main.py 接线：manage_plugins 工具、PET_TOOLS 变更、提示词注入、_dispatch_tool_call 插件优先、插件异常不影响内置工具"
       ]
@@ -29,7 +30,7 @@
     {
       "name": "GUI 真实界面自动冒烟（源码版真实 Tk 窗口）",
       "command": "python -B tools/check_plugins_gui.py",
-      "result": "9 / 9 通过 · 退出码 0",
+      "result": "24 / 24 通过 · 退出码 0",
       "checks": [
         "首次加载确认弹窗可打开、可勾选、正确返回被批准的插件名",
         "确认弹窗「全部跳过」返回空列表",
@@ -38,19 +39,29 @@
         "插件清单显示插件名与「✅ 已加载」状态",
         "插件自定义控制中心页面注册并渲染成功",
         "插件菜单项进入快捷菜单数据",
-        "快捷菜单真实渲染出插件项（排在固定项之前）"
+        "快捷菜单真实渲染出插件项（排在固定项之前）",
+        "插件行开关可定位，真实点击后插件被卸下且不弹错误框",
+        "停用后提示词段落移除、状态变为未启用",
+        "再次点击开关可重新启用并恢复工具",
+        "「启用插件系统」总开关可点击、关掉立即卸下全部能力并写入 config",
+        "总开关拨回后插件能力恢复"
       ],
-      "note": "使用临时插件目录与临时信任库，不读写项目里的 plugins/ 与 data/；全程自动调度点击，无需人工操作。"
+      "notes": [
+        "使用临时插件目录与临时信任库，不读写项目里的 plugins/ 与 data/",
+        "拦截 messagebox.showerror/showwarning 作为失败信号，避免错误弹窗阻塞自动化",
+        "把 pet.save_config 换成只改内存的桩，验证脚本不写主人的 data/config.json",
+        "60 秒兜底退出，任何一步异常都不会挂住窗口"
+      ]
     },
     {
       "name": "EXE 端到端（冻结版真实运行）",
-      "command": "python -B tools/build_exe.py → 启动 dist\\虹语织-桌宠v2.exe（约 26 秒后终止）",
+      "command": "python -B tools/build_exe.py → 启动 dist\\虹语织-桌宠v2.exe（约 25 秒后终止）",
       "result": "通过",
       "evidence": {
-        "build_seconds": 28.83,
-        "exe_bytes": 56623414,
+        "build_seconds": 31.34,
+        "exe_bytes": 56625091,
         "exe_path": "dist\\虹语织-桌宠v2.exe",
-        "note": "共构建两次；下列证据来自最终产物（21:04 构建，21:04 运行验证）。",
+        "note": "共构建三次；此数字来自含开关修复的最终产物。",
         "plugins_dir_created_beside_exe": "dist\\plugins",
         "seeded": [
           "dist\\plugins\\README.txt",
@@ -96,6 +107,34 @@
     }
   ],
   "bugs_found_and_fixed_during_verification": [
+    {
+      "id": "toggle-command-arity",
+      "severity": "high",
+      "found_by": "主人实机反馈（控制中心取消加载插件弹出「没有找到插件：False」）",
+      "detail": "ToggleSwitch 点击时调用 command(新状态: bool)，而插件清单里的开关用 lambda 只绑定了插件名，于是 False 被当成插件名传给 set_plugin_enabled。",
+      "fix": "改用 functools.partial(self._cc_plugins_toggle, record['name']) 绑定插件名、状态作为第二个参数；_cc_plugins_toggle 增加参数校验与非字符串名的兜底。"
+    },
+    {
+      "id": "toggle-refresh-during-animation",
+      "severity": "medium",
+      "found_by": "修 toggle 时同步排查",
+      "detail": "开关点击后立刻销毁整页，会让 ToggleSwitch 的滑动动画回调落到已销毁控件上（TclError）。",
+      "fix": "新增 _cc_plugins_schedule_refresh()：等 220ms 动画播完再重建页面，连点只重建一次。"
+    },
+    {
+      "id": "master-switch-not-immediate",
+      "severity": "medium",
+      "found_by": "主人反馈后自查",
+      "detail": "「启用插件系统」总开关只写 config，已加载的插件仍然生效，要重启才失效，与界面文案不符。",
+      "fix": "新增 PluginManager.disable_all()（卸载 + 回滚基线 + 通知宿主），总开关关闭时立即调用，打开时立即 load_all；reload() 复用 disable_all。"
+    },
+    {
+      "id": "missing-functools-import",
+      "severity": "high",
+      "found_by": "GUI 真实界面冒烟",
+      "detail": "main.py 未导入 functools，改用 functools.partial 后插件页整个渲染失败（NameError）。",
+      "fix": "在 main.py 顶部补 import functools。"
+    },
     {
       "id": "state-dir-collision",
       "severity": "high",
@@ -147,9 +186,13 @@
     "quit_pet 增加 shutdown 事件与 unload_all，之后流程不变。"
   ],
   "manual_checks_recommended": [
-    "把真实插件放进插件目录、重启桌宠，确认启动时弹窗与后续静默加载符合直觉。",
-    "在控制中心「🧩 插件扩展」页点「✨ 启用示例插件」，确认 3 个示例被复制并加载。",
+    "在控制中心「🧩 插件扩展」页真实点击每个开关，确认提示气泡与清单状态同步（已由 GUI 检查覆盖大部分路径）。",
     "启用 example_appearance 后确认新表情「插件气泡」与动作 plugin_bounce_twice 生效。",
     "启用 example_override 后确认打开非白名单网址会被拦下、时间工具带插件附言。"
+  ],
+  "side_effects_on_owner_machine": [
+    "为验证冻结版，多次启动过 dist\\虹语织-桌宠v2.exe（每次约 25 秒后终止），桌宠自身的定时任务因此执行了一次：data\\config.json 的 reminders[0].runs 由 3 变为 4、due 顺延到下周。这是任务真的跑过，未做回退。",
+    "验证脚本原先会通过 save_config 往 data\\config.json 写入 enable_plugins 键；已把该键移除，并给检查脚本加了只改内存的 save_config 桩，之后不再触碰主人配置。",
+    "data\\plugins.log 曾被测试写入，已删除；测试与检查脚本现已把日志重定向到临时目录。"
   ]
 }

@@ -460,13 +460,27 @@ class PluginManager:
         self._actions.clear()
         self.hooks.clear()
 
+    def disable_all(self):
+        """停用全部插件：卸载、清空注册表、把工具/表情表回滚到基线并通知宿主。
+
+        控制中心「启用插件系统」总开关关闭时走这里，保证效果立即生效，
+        而不是等到下次重启才不加载。
+        """
+        with self._lock:
+            self.unload_all()
+            self._reset_registries()
+            self._restore_baseline()
+            self._notify_tools_changed()
+            self._notify_emotions_changed()
+            self._notify_actions_changed()
+            self.log("system", "已停用全部插件，能力已还原到基线")
+            return {"loaded": [], "failed": [], "skipped": [], "disabled": True}
+
     def reload(self, confirm=None):
         """卸载全部插件 → 回滚基线 → 重新扫描加载（热重载）。"""
         with self._lock:
             self.log("system", "开始重新加载插件…")
-            self.unload_all()
-            self._reset_registries()
-            self._restore_baseline()
+            self.disable_all()
             if self.trust is not None:
                 self.trust.load()
             summary = self.load_all(confirm=confirm)
