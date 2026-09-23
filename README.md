@@ -64,7 +64,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 </p>
 
 十种情绪素材（默认 / 睡觉 / 脸红 / 想充电 / 疑惑 / 嫌弃 / 递爱心 / 思考中 / 生气 / 打扫卫生），
-其中「睡觉」「打扫卫生」播放原版整图立绘，含 24 帧平滑扫地动画。
+其中「睡觉」「打扫卫生」播放原版整图立绘。
 
 ---
 
@@ -97,7 +97,7 @@ python -m pip install -r requirements.txt
 python -B src/main.py
 ```
 
-也可以直接双击根目录的 **`启动桌宠.bat`**（静默启动，不弹控制台）。
+也可以直接双击根目录的 **`启动桌宠.bat`**。
 
 源码版的配置保存在 `data/config.json`，技能在 `resources/skills/`；无论从哪个工作目录启动都会定位到同一份数据。
 
@@ -136,7 +136,7 @@ python -B src/main.py
 
 ### 对话窗口
 
-- **Enter** 发送，**Shift+Enter** 换行，**Esc** 关闭；输入框随内容自动增高（最多 6 行）。
+- **Enter** 发送，**Shift+Enter** 换行，**Esc** 关闭。
 - 回复中显示停止按钮，点击中断且保留草稿；新消息会打断上一轮。
 - 拖动窗口左上角「呆毛」可实时调整大小，松手记忆尺寸。
 - 记录窗口为气泡式界面，支持关键词搜索、按类型筛选、导出 txt、复制单条。
@@ -219,9 +219,6 @@ python -B src/main.py
 | --- | --- | --- | --- | --- |
 | **源码版** | `data/config.json` | `data/memory.json` | `data/action_log.json` | `resources/skills/` |
 | **EXE 版** | EXE 同目录 | EXE 同目录 | EXE 同目录 | EXE 同目录 `skills/` |
-
-⚠️ 这些文件包含你的 API Key 与个人数据，**已在 `.gitignore` 中排除**，请勿提交到版本库。
-仓库中只提供空密钥的示例 [`data/config.example.json`](data/config.example.json)。
 
 ### 主要配置项
 
@@ -412,7 +409,7 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 **搜索要额外配模型吗？**
 不需要。搜索由本机直接访问公开搜索引擎（百度 / Brave / 必应 / 360 / DuckDuckGo），
-无需搜索模型与密钥；旧版 `search_model` 配置会被自动忽略。
+无需搜索模型与密钥；旧版。
 
 ---
 
@@ -420,8 +417,7 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 - 仅支持 **Windows 10/11 x64**（依赖 Win32 分层窗口、DPI 与托盘 API）。
 - 立绘与素材版权归原作者，请勿商用（见下）。
-- 识图与 computer_use 依赖所用模型的多模态能力，需手动开启，不做自动探测。
-- 本仓库**不含自动化测试**：为保证发行包精简，测试与检查脚本已从仓库移除。
+- 识图与 computer_use 依赖所用模型的多模态能力，需手动开启，且效果与模型自身能力强相关。
 - DeepSeek Harness 联动需要额外安装配套插件。
 
 ---
