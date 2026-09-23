@@ -15,6 +15,9 @@ SOURCE_DIRS = {"src", "resources", "tools", "docs"}
 EXCLUDED_DIRS = {"__pycache__", ".git", "node_modules", ".venv", "venv", ".pytest_cache",
                  ".mypy_cache", ".ruff_cache", "_skills_backup", ".build"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".log", ".tmp", ".bak"}
+# Per-machine runtime preferences created from a *.template on first run
+# (e.g. skills/web-access/config.env); never ship these in a source package.
+RUNTIME_CONFIG_FILES = {"config.env"}
 
 
 def source_files(root):
@@ -30,6 +33,7 @@ def source_files(root):
         if (not path.is_file() or path.is_symlink() or
                 any(part in EXCLUDED_DIRS for part in relative.parts) or
                 path.suffix.lower() in EXCLUDED_SUFFIXES or
+                path.name in RUNTIME_CONFIG_FILES or
                 path.name == ".env" or path.name.startswith(".env.") or
                 (relative.parts[0] == "tools" and path.name.startswith("_"))):
             continue
