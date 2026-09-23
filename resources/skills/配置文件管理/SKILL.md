@@ -19,7 +19,7 @@ description: 虹语织核心配置文件 config.json 的查看、修改、安全
 1. **API与模型设置**
    - `base_url`：API 请求的基础地址
    - `api_key`：访问 API 的密钥
-   - `model`：主对话模型（如 `gemini-3.7-flash`）
+   - `model`：主对话模型 ID（不预置默认值，按所用供应商的模型 ID 填写）
    - `web_search_timeout_secs`：本地联网搜索总超时（3–30 秒，默认 8）
    - `web_search_max_results`：默认搜索结果数（1–10，默认 5）；搜索无需模型或密钥
    - `max_tool_rounds`：工具调用的最大轮数限制
@@ -36,13 +36,19 @@ description: 虹语织核心配置文件 config.json 的查看、修改、安全
    - `enable_mouse_facing`：是否开启视线跟随鼠标
 
 3. **系统监控与安全策略**
-   - `low_balance_threshold`：低余额预警阈值
+   - `low_balance_threshold`：低余额预警阈值（按账户币种比较：美元账户填美元金额）
    - `balance_check_interval_mins`：余额检查间隔（分钟）
    - `sleep_timeout_mins`：无操作后进入休眠超时（分钟）
    - `confirm_before_command`：运行命令前是否必须弹窗确认
 
 4. **核心设定**
    - `system_prompt`：虹语织的角色设定与全局行为规范
+
+5. **额度查询（query_api_balance_and_usage）**
+   - 按 `base_url` 自动探测账户额度：兼容 OpenAI 计费接口 / OneAPI / NewAPI 中转站、DeepSeek、OpenRouter、
+     硅基流动、Moonshot(Kimi) 等常见额度接口；未收录的接口也会按常见路径依次尝试，无需额外配置项
+   - 返回结果里 `remaining` / `used` / `total` 为账户币种金额，同时带 `currency` 与展示用文案；
+     缺少的字段（例如某些供应商不提供已用量）会留空，不要编造
 
 ## 管理与修改操作规范
 

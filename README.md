@@ -19,7 +19,7 @@ python -m pip install -r requirements.txt
 
 | 位置 | 内容 |
 | --- | --- |
-| `src/` | 主程序、搜索模块、渲染器和 `pet_tools/` 工具包、`pet_plugins/` 插件系统 |
+| `src/` | 主程序、搜索模块、额度查询模块（`pet_quota.py`）、渲染器和 `pet_tools/` 工具包、`pet_plugins/` 插件系统 |
 | `resources/` | `assets/` 立绘、`prompt.txt` 人设、`skills/` 技能库、`plugins/` 示例插件 |
 | `plugins/` | 用户插件目录（运行时生成）：放进 `.py` 即可扩展桌宠 |
 | `data/` | 本机配置、记忆、操作日志、插件信任与状态；发布包仅附空密钥示例和说明 |

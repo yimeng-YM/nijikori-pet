@@ -1,7 +1,7 @@
 {
   "base_url": "https://api.kourichat.com/v1",
   "api_key": "",
-  "model": "gemini-3.7-flash",
+  "model": "",
   "web_search_timeout_secs": 8,
   "web_search_max_results": 5,
   "pet_size": 180,

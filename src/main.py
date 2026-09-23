@@ -30,6 +30,7 @@ import copy
 import functools
 import pet_io
 import pet_config
+import pet_quota
 from pet_search import perform_web_search, DEFAULT_TIMEOUT as SEARCH_TIMEOUT, DEFAULT_LIMIT as SEARCH_LIMIT
 from pet_search_prompt import WEB_SEARCH_DESCRIPTION, QUERY_DESCRIPTION, build_search_prompt
 from pet_paths import PATHS, prepare_data_dir
@@ -131,7 +132,8 @@ SKILL_MAX_READ_CHARS = 8000  # per-skill content cap returned to the model
 
 DEFAULT_BASE_URL = "https://api.kourichat.com/v1"
 DEFAULT_API_KEY = ""  # never hardcoded; the key is read from config.json only
-DEFAULT_MODEL = "deepseek-v4-flash-0731"
+# 不预置任何示例模型名：出厂 model 为空，用户按自己所用供应商的模型 ID 填写。
+DEFAULT_MODEL = ""
 APP_VERSION = "3.0"
 
 # ---------------------------------------------------------------------------
@@ -1685,7 +1687,7 @@ PET_TOOLS = [
         "type": "function",
         "function": {
             "name": "query_api_balance_and_usage",
-            "description": "查询当前主人的 OpenAI / OneAPI 账户余额、剩余额度、已使用额度、总配额与到期时间。当用户询问余额、剩余额度、用量、费用、花费、查钱、账户状态时自主调用此工具获取真实数据。",
+            "description": "查询当前 API 供应商账户的剩余额度、已使用额度、总配额、到期时间与账户是否可用。兼容多种额度接口：OpenAI 计费接口 / OneAPI / NewAPI 中转站、DeepSeek、OpenRouter、硅基流动、Moonshot(Kimi) 等；未收录的接口也会按常见路径自动尝试。当用户询问余额、剩余额度、用量、费用、花费、查钱、账户状态时自主调用此工具获取真实数据。",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -4345,7 +4347,7 @@ BUILTIN_SKILLS = {
 1. **API与模型设置**
    - `base_url`：API 请求的基础地址
    - `api_key`：访问 API 的密钥
-   - `model`：主对话模型
+   - `model`：主对话模型 ID（不预置默认值，按所用供应商的模型 ID 填写）
    - `web_search_timeout_secs`：本地联网搜索总超时（3 ~ 30 秒，默认 8）
    - `web_search_max_results`：本地联网搜索结果数（1 ~ 10，默认 5）；搜索无需 API Key，旧 search_model 已废弃
    - `max_tool_rounds`：工具调用的最大轮数限制
@@ -4360,7 +4362,7 @@ BUILTIN_SKILLS = {
    - `wander_interval_secs`：漫步触发间隔（秒）
 
 3. **系统监控与安全策略**
-   - `low_balance_threshold`：低余额预警阈值
+   - `low_balance_threshold`：低余额预警阈值（按账户币种比较）
    - `balance_check_interval_mins`：余额检查间隔（分钟）
    - `sleep_timeout_mins`：无操作休眠超时（分钟）
    - `confirm_before_command`：运行命令前是否弹窗确认
@@ -4368,6 +4370,11 @@ BUILTIN_SKILLS = {
 
 4. **核心设定**
    - `system_prompt`：织织的角色设定与全局行为规范（修改前需主人确认）
+
+5. **额度查询（query_api_balance_and_usage）**
+   - 按 `base_url` 自动探测账户额度：兼容 OpenAI 计费接口 / OneAPI / NewAPI 中转站、DeepSeek、OpenRouter、
+     硅基流动、Moonshot(Kimi) 等常见额度接口；未收录的接口也会按常见路径依次尝试，无需额外配置项
+   - 返回结果中 `remaining` / `used` / `total` 为账户币种金额，并带 `currency`；供应商没提供的字段会留空，不要编造
 
 ## 管理与修改操作规范
 
@@ -6490,16 +6497,17 @@ class DesktopPet:
     def check_low_balance_silently(self):
         threshold = float(self.config.get("low_balance_threshold", DEFAULT_LOW_BALANCE_THRESHOLD))
         res = self.execute_tool_call("query_api_balance_and_usage", "{}")
-        if res.get("status") == "success":
-            remaining = res.get("remaining_usd", 0.0)
-            if remaining <= threshold:
-                def on_low():
-                    self.show_speech(
-                        f"呜...检测到主人的 API 额度只剩下 ${remaining:.2f} 啦（低于电量阈值 ${threshold:.2f}），电量告急...需要人的贴贴充电！(〃' ‸ '〃)",
-                        "想充电",
-                        7000
-                    )
-                self._tk_call(on_low)
+        if res.get("status") != "success" or not pet_quota.is_low(res, threshold):
+            return
+        amount = pet_quota.format_amount(res.get("remaining"), res.get("currency"))
+
+        def on_low():
+            self.show_speech(
+                f"呜...检测到主人的 API 额度只剩下 {amount} 啦（低于电量阈值 {threshold:g}），电量告急...需要人的贴贴充电！(〃' ‸ '〃)",
+                "想充电",
+                7000
+            )
+        self._tk_call(on_low)
 
     def _reposition_chat_window_near_pet(self):
         """Keep the open chat window nicely positioned next to the pet as it moves."""
@@ -8635,66 +8643,17 @@ class DesktopPet:
 
     def _dispatch_tool_call_builtin(self, tool_name, args, _scheduled_authorized=False):
         if tool_name == "query_api_balance_and_usage":
-            base_url = self.config.get("base_url", DEFAULT_BASE_URL).rstrip("/")
-            base_v1 = base_url if base_url.endswith("/v1") else f"{base_url}/v1"
-            base_root = base_url[:-3] if base_url.endswith("/v1") else base_url
-            api_key = self.config.get("api_key", "")
-
-            if not api_key:
-                return {"status": "error", "message": "API Key not configured"}
-
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                **kouri_ua_header(base_url),
-            }
-
-            try:
-                # Subscription
-                sub_url = f"{base_v1}/dashboard/billing/subscription"
-                req = urllib.request.Request(sub_url, headers=headers)
-                sub_data = None
-                try:
-                    with robust_urlopen(req, timeout=8) as resp:
-                        sub_data = json.loads(resp.read().decode("utf-8"))
-                except Exception:
-                    req2 = urllib.request.Request(f"{base_root}/dashboard/billing/subscription", headers=headers)
-                    with robust_urlopen(req2, timeout=8) as resp:
-                        sub_data = json.loads(resp.read().decode("utf-8"))
-
-                total_granted = sub_data.get("hard_limit_usd", 0.0) if sub_data else 0.0
-                access_until = sub_data.get("access_until", 0) if sub_data else 0
-                expire_str = "永久有效" if not access_until or access_until <= 0 else datetime.fromtimestamp(access_until).strftime("%Y-%m-%d")
-
-                # Usage
-                usage_url = f"{base_v1}/dashboard/billing/usage?start_date=2024-01-01&end_date=2026-12-31"
-                req_u = urllib.request.Request(usage_url, headers=headers)
-                used_usd = 0.0
-                try:
-                    with robust_urlopen(req_u, timeout=8) as resp:
-                        u_data = json.loads(resp.read().decode("utf-8"))
-                        used_usd = u_data.get("total_usage", 0.0) / 100.0
-                except Exception:
-                    pass
-
-                remaining_usd = max(0.0, total_granted - used_usd)
-                usage_pct = f"{(used_usd / total_granted * 100):.2f}%" if total_granted > 0 else "0%"
-
-                # Check if threshold crossed
-                threshold = float(self.config.get("low_balance_threshold", DEFAULT_LOW_BALANCE_THRESHOLD))
-                if remaining_usd <= threshold:
-                    self._tk_call(self.set_emotion, "想充电")
-
-                return {
-                    "status": "success",
-                    "remaining_usd": round(remaining_usd, 4),
-                    "total_used_usd": round(used_usd, 4),
-                    "total_granted_usd": round(total_granted, 4),
-                    "usage_percentage": usage_pct,
-                    "expire_time": expire_str
-                }
-            except Exception as e:
-                return {"status": "error", "message": str(e)}
+            base_url = self.config.get("base_url", DEFAULT_BASE_URL)
+            result = pet_quota.query(
+                base_url,
+                self.config.get("api_key", ""),
+                extra_headers=kouri_ua_header(base_url),
+            )
+            # 低于电量阈值时同步切「想充电」表情（与后台巡检一致）
+            threshold = float(self.config.get("low_balance_threshold", DEFAULT_LOW_BALANCE_THRESHOLD))
+            if pet_quota.is_low(result, threshold):
+                self._tk_call(self.set_emotion, "想充电")
+            return result
 
         elif tool_name == "get_current_time":
             now = datetime.now()
@@ -9566,12 +9525,10 @@ class DesktopPet:
         def run_query():
             res = self.execute_tool_call("query_api_balance_and_usage", "{}")
             if res.get("status") == "success":
-                remaining = res.get("remaining_usd", 0.0)
-                used_usd = res.get("total_used_usd", 0.0)
-                total_granted = res.get("total_granted_usd", 0.0)
                 threshold = float(self.config.get("low_balance_threshold", DEFAULT_LOW_BALANCE_THRESHOLD))
-                emo = "想充电" if remaining <= threshold else "递爱心"
-                msg = f"人！织织查到啦！剩余额度还有 ${remaining:.2f}（已用 ${used_usd:.2f} / 总 ${total_granted:.2f}），尽情使用吧！(✧ω✧)"
+                emo = "想充电" if pet_quota.is_low(res, threshold) else "递爱心"
+                name = pet_quota.provider_label(res)
+                msg = f"人！织织查到啦！{name} {pet_quota.format_summary(res)}，尽情使用吧！(✧ω✧)"
                 self._tk_call(self.show_speech, msg, emo, 7000)
             else:
                 err_msg = res.get("message", "未知错误")
@@ -10675,6 +10632,38 @@ class DesktopPet:
             api_key = self.config.get("api_key", "")
             model = self.config.get("model", DEFAULT_MODEL)
 
+            # 未填模型时：不发送注定失败的对话请求；余额类提问仍可用查额度接口回答
+            if not str(model or "").strip():
+                _ask_quota = any(k in msg for k in ("余额", "额度", "用量", "多少钱", "查钱", "账单"))
+                _q = self.execute_tool_call("query_api_balance_and_usage", "{}") if _ask_quota else {}
+                if _q.get("status") == "success":
+                    _reply = (f"人 织织查到啦 你的{pet_quota.provider_label(_q)}账户"
+                              f"{pet_quota.format_summary(_q)}呢(✧ω✧)")
+
+                    def on_no_model_quota():
+                        self.chat_history.append({"role": "assistant", "content": _reply})
+                        self.session_messages.append({"user": msg, "bot": _reply})
+                        self._active_cancel_event = None
+                        self._sync_chat_action()
+                        self._hist_write("[织织自主调用工具: query_api_balance_and_usage]" + os.linesep, "tool")
+                        self._hist_write("虹语织: ", "bot")
+                        self._hist_write(_reply + os.linesep + os.linesep, "msg")
+                        self.show_speech(_reply, "递爱心", 7000, hide_in_chat=True)
+                        self.show_dialog_line("织织", _reply)
+                    self._tk_call_for_turn(turn, on_no_model_quota)
+                    return
+
+                def on_no_model():
+                    self._active_cancel_event = None
+                    self._sync_chat_action()
+                    tip = "呜...还没填对话模型呢，去控制中心「🔌 接口与模型」页填上就能聊天啦 (〃' ‸ '〃)"
+                    self.show_speech(tip, "疑惑", 6000, hide_in_chat=True)
+                    self.show_dialog_line("系统", tip)
+                    self._hist_write("系统提示: ", "sys")
+                    self._hist_write(tip + os.linesep + os.linesep, "sys")
+                self._tk_call_for_turn(turn, on_no_model)
+                return
+
             
             # Real-time Desktop Window & Spatial Perception capture
             snapshot = self.get_desktop_perception_snapshot()
@@ -10727,8 +10716,8 @@ class DesktopPet:
                 # Guarantee non-empty reply string
                 if not reply or not reply.strip():
                     if last_tool_data:
-                        rem = last_tool_data.get("remaining_usd", 0.0)
-                        reply = f"人 织织查到啦 你的剩余额度还有${rem:.2f}美元呢(✧ω✧)$快夸夸织织(〃'▽'〃)"
+                        reply = (f"人 织织查到啦 你的{pet_quota.provider_label(last_tool_data)}账户"
+                                 f"{pet_quota.format_summary(last_tool_data)}呢(✧ω✧)$快夸夸织织(〃'▽'〃)")
                     else:
                         reply = "织织接收到啦！随时听从人的吩咐！(〃'▽'〃)"
 
@@ -10789,10 +10778,8 @@ class DesktopPet:
                 if "余额" in msg or "额度" in msg or "用量" in msg or "多少钱" in msg or "查钱" in msg:
                     tool_res = self.execute_tool_call("query_api_balance_and_usage", "{}")
                     if tool_res.get("status") == "success":
-                        rem = tool_res.get("remaining_usd", 0.0)
-                        usd = tool_res.get("total_used_usd", 0.0)
-                        tot = tool_res.get("total_granted_usd", 0.0)
-                        fallback_reply = f"人 织织查到啦 你的剩余额度还有${rem:.2f}美元呢(✧ω✧)$已经用了${usd:.2f} 总共是${tot:.2f}哦(〃'▽'〃)"
+                        fallback_reply = (f"人 织织查到啦 你的{pet_quota.provider_label(tool_res)}账户"
+                                          f"{pet_quota.format_summary(tool_res)}哦(✧ω✧)")
                         
 
                         def on_fallback():
@@ -11123,8 +11110,11 @@ class DesktopPet:
         sw.pack(side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)), pady=(int(8 * dpi), 0))
         return sw
 
-    def _cc_field(self, parent, label, value, show=None):
-        """Labeled flat text field; returns the Entry widget."""
+    def _cc_field(self, parent, label, value, show=None, placeholder=""):
+        """Labeled flat text field; returns the Entry widget.
+
+        占位提示（placeholder）只用于给用户看写法，不算作已填内容：
+        输入框为空时显示灰色提示，聚焦即消失，失焦且仍为空时恢复。"""
         dpi = self.dpi_scale
         tk.Label(parent, text=label, font=self.f_ui, fg=PAL["ink_soft"],
                  bg="#ffffff").pack(anchor="w", pady=(int(8 * dpi), int(3 * dpi)))
@@ -11133,8 +11123,54 @@ class DesktopPet:
                      highlightbackground=PAL["line"], highlightcolor=PAL["cyan"],
                      show=show or "")
         e.pack(fill=tk.X, ipady=int(4 * dpi))
-        e.insert(0, str(value))
+        if value is not None and str(value) != "":
+            e.insert(0, str(value))
+        elif placeholder:
+            state = {"hint": True}
+
+            def _show_hint():
+                if e.get():
+                    return
+                state["hint"] = True
+                e.config(fg=PAL["ink_dim"])
+                e.insert(0, placeholder)
+
+            def _on_focus_in(_event=None):
+                if state["hint"]:
+                    state["hint"] = False
+                    e.delete(0, tk.END)
+                    e.config(fg=PAL["ink"])
+
+            def _on_focus_out(_event=None):
+                if not e.get():
+                    _show_hint()
+
+            e.bind("<FocusIn>", _on_focus_in)
+            e.bind("<FocusOut>", _on_focus_out)
+            _show_hint()
+
+            def _value():
+                return "" if state["hint"] else e.get().strip()
+
+            def _set_value(text):
+                state["hint"] = False
+                e.delete(0, tk.END)
+                e.config(fg=PAL["ink"])
+                if text:
+                    e.insert(0, str(text))
+                else:
+                    _show_hint()
+
+            e.cc_value = _value      # type: ignore[attr-defined]
+            e.cc_set_value = _set_value  # type: ignore[attr-defined]
         return e
+
+    def _cc_entry_value(self, entry):
+        """读取输入框内容：带占位提示的字段返回真实值（未输入时为空串）。"""
+        getter = getattr(entry, "cc_value", None)
+        if callable(getter):
+            return getter()
+        return entry.get().strip()
 
     def _cc_open_path(self, path):
         try:
@@ -11232,7 +11268,7 @@ class DesktopPet:
             ("启用工具", f"{enabled_tools} / {total_tools}"),
             ("定时任务", f"{n_tasks} 个"),
             ("记忆条目", f"{n_mem} 条"),
-            ("当前模型", str(self.config.get("model", DEFAULT_MODEL))),
+            ("当前模型", str(self.config.get("model") or "未设置")),
         ]
         for i, (k, v) in enumerate(stats):
             r, c = divmod(i, 2)
@@ -11409,7 +11445,9 @@ class DesktopPet:
                             font=self.f_small, padx=int(8 * dpi), bd=0, cursor="hand2")
         btn_eye.pack(side=tk.RIGHT, padx=(int(8 * dpi), 0), ipady=int(3 * dpi))
 
-        e_model = self._cc_field(conn, "对话模型 (Model)", self.config.get("model", DEFAULT_MODEL))
+        e_model = self._cc_field(conn, "对话模型 (Model)（填你所用的模型 ID，无默认值）",
+                                 self.config.get("model", DEFAULT_MODEL),
+                                 placeholder="例如：厂商文档里的模型 ID")
         e_rounds = self._cc_field(conn, "单轮对话工具调用链上限 max_tool_rounds（10 ~ 300）",
                                   str(int(self.config.get("max_tool_rounds", 80) or 80)))
 
@@ -11424,7 +11462,13 @@ class DesktopPet:
                                         str(self.config.get("web_search_max_results", SEARCH_LIMIT)))
 
         money = self._cc_card(body, title="电量巡检", icon="💰")
-        e_threshold = self._cc_field(money, "电量告急阈值（$ 余额低于此值触发「想充电」）",
+        tk.Label(money, text="自动按你填写的 API 地址探测账户额度：兼容 OpenAI 计费接口 / OneAPI / NewAPI 中转站、\n"
+                             "DeepSeek、OpenRouter、硅基流动、Moonshot(Kimi) 等常见额度接口，其他接口也会自动尝试。\n"
+                             "阈值按账户币种比较（美元账户填美元金额，人民币账户填人民币金额）。",
+                 font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
+                 justify=tk.LEFT, anchor="w", wraplength=int(420 * dpi)).pack(fill=tk.X,
+                                                                             pady=(0, int(4 * dpi)))
+        e_threshold = self._cc_field(money, "电量告急阈值（账户币种下余额低于此值触发「想充电」）",
                                      str(self.config.get("low_balance_threshold",
                                                          DEFAULT_LOW_BALANCE_THRESHOLD)))
         e_interval = self._cc_field(money, "自动巡检余额间隔（分钟，后台静默频率）",
@@ -11465,7 +11509,7 @@ class DesktopPet:
             self.config.pop("search_model", None)
             self.config["base_url"] = e_url.get().strip() or DEFAULT_BASE_URL
             self.config["api_key"] = e_key.get().strip()
-            self.config["model"] = e_model.get().strip() or DEFAULT_MODEL
+            self.config["model"] = self._cc_entry_value(e_model)
             try:
                 mr = int(float(e_rounds.get().strip()))
                 self.config["max_tool_rounds"] = max(10, min(300, mr))
@@ -12133,7 +12177,7 @@ class DesktopPet:
         card = self._cc_card(body, title="关于", icon="ℹ️")
         tk.Label(card, text=f"虹语织 NijiKori v{APP_VERSION} · Windows 原生桌面萌宠与 API 助手",
                  font=self.f_ui, fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
-        tk.Label(card, text=f"当前模型：{self.config.get('model', DEFAULT_MODEL)}"
+        tk.Label(card, text=f"当前模型：{self.config.get('model') or '未设置（请在「🔌 接口与模型」页填写）'}"
                             f"    接口：{self.config.get('base_url', DEFAULT_BASE_URL)}",
                  font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff").pack(anchor="w",
                                                                            pady=(int(4 * dpi), 0))
