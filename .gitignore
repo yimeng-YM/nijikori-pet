@@ -18,3 +18,5 @@ node_modules/
 *.log
 *.tmp
 *.bak
+# web-access 技能运行时偏好（首次运行从 templates/config.env.template 创建，属本机配置）
+resources/skills/web-access/config.env
