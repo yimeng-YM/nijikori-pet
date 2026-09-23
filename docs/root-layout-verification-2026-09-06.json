@@ -4,7 +4,7 @@
   "build_seconds": 31.89,
   "startup": {
     "callback_errors": [],
-    "assets": "E:\\Harness\\Nijikori pet\\resources\\assets",
+    "assets": "<项目根目录>\\resources\\assets",
     "layered_renderer": true,
     "alpha_window": true,
     "sprite_states": 10,
@@ -15,7 +15,7 @@
     "passed": true
   },
   "exe": {
-    "exe": "E:\\Harness\\Nijikori pet\\dist\\虹语织-桌宠v2.exe",
+    "exe": "<项目根目录>\\dist\\虹语织-桌宠v2.exe",
     "size_bytes": 55361453,
     "sha256": "fb3d6d5d04095db6d23cff059706c3fcc15694dfb05917433a23cf557de1abfd",
     "modules_verified": [
@@ -32,7 +32,7 @@
       "prompt.txt",
       "skills/配置文件管理/SKILL.md"
     ],
-    "release": "E:\\Harness\\Nijikori pet\\release\\虹语织-桌宠v2-目录整理-20260906_214857.exe"
+    "release": "<项目根目录>\\release\\虹语织-桌宠v2-目录整理-20260906_214857.exe"
   },
   "root_files": [
     ".gitignore",
@@ -41,5 +41,5 @@
     "启动桌宠.bat"
   ],
   "data_hashes_unchanged": true,
-  "running_instance_note": "工作区原 pythonw main.py 进程已退出；D:\\Nijikori Pet 的独立 EXE 保持运行。隔离启动验证实例已自动退出。"
+  "running_instance_note": "工作区原 pythonw main.py 进程已退出；<本机安装目录> 的独立 EXE 保持运行。隔离启动验证实例已自动退出。"
 }

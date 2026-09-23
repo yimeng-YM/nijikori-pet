@@ -1,6 +1,6 @@
 {
-  "exe_path": "E:\\Harness\\Nijikori pet\\release\\虹语织-桌宠v2-本地搜索-20260906_211508.exe",
-  "dist_exe_path": "E:\\Harness\\Nijikori pet\\dist\\虹语织-桌宠v2.exe",
+  "exe_path": "<项目根目录>\\release\\虹语织-桌宠v2-本地搜索-20260906_211508.exe",
+  "dist_exe_path": "<项目根目录>\\dist\\虹语织-桌宠v2.exe",
   "size_bytes": 55385705,
   "sha256": "bb2c7d52c3f1e39a9ab808f39c1b31797e3277f9e07ba99c475e79d9b25c42a2",
   "build_seconds": 33.91,

@@ -25,7 +25,7 @@ metadata:
 
 > ## 桌宠（虹语织）Windows 运行须知
 > 你的运行环境是 Windows + PowerShell + Node.js。本 skill 在桌宠里运行请遵守：
-> - **技能根目录**：`E:\Harness\Nijikori pet\skills\web-access`。下文所有 `${CLAUDE_SKILL_DIR}` 都替换为此绝对路径（桌宠不会设置该环境变量）。
+> - **技能根目录**：`resources\skills\web-access`（相对仓库根目录）。下文所有 `${CLAUDE_SKILL_DIR}` 都替换为技能根目录的绝对路径（桌宠不会设置该环境变量）。
 > - **命令行工具**：本机 shell 是 PowerShell。用 **`curl.exe`**，不要用 `curl`（它是 `Invoke-WebRequest` 别名，`-s -X POST --data-raw` 会报错）；单引号字符串在 PowerShell 里是字面量，可直接用于 `--data-raw '...'`。JSON 负载建议写成变量再传，避免转义问题。
 > - **重置/停止 CDP Proxy**：proxy 由 check-deps 以**脱离进程**方式启动，桌宠的 `stop_background_job` 管不到它。要重置用 `taskkill /F /IM node.exe`（会杀所有 node 进程，如本机上还有其他 node 服务请先确认），proxy 日志在 `%TEMP%\cdp-proxy.log`。
 > - **超时与轮数**：`run_command_capture` 默认 30s（可传 timeout 到 600s）。check-deps 可能等浏览器授权弹窗，请传 `timeout≈60`。真实浏览器任务轮次多，建议 `max_tool_rounds≥120`（桌宠可到 300）。
@@ -293,8 +293,8 @@ updated: 2026-03-19
 |------|---------|
 | `references/cdp-api.md` | 需要 CDP API 详细参考、JS 提取模式、错误处理时 |
 | `references/site-patterns/{domain}.md` | 确定目标网站后，读取对应站点经验 |
-
-
+
+
 ## 查询 Kouri Ai 套餐余额（已验证流程）
 1. 先运行 check-deps.mjs --browser edge 启动 CDP（Edge, 端口9222，proxy 在 localhost:3456）。
 2. 在 /targets 里找到 api.kourichat.com 的 tab（标题含 Kouri Ai）。
@@ -302,8 +302,8 @@ updated: 2026-03-19
 4. 提取额度：含中文的 eval 指令先 write_text_file 写到 %TEMP%\quota_payload.txt（UTF-8），再用 PowerShell 读取后 --data-binary 发送。payload：
    JSON.stringify([...document.querySelectorAll('div,section,span,p')].map(e=>e.textContent.trim()).filter(t=>t.length<100&&/[\$￥¥]|余额|额度|配额|套餐|消耗/.test(t)).slice(0,40))
 5. 返回字段：今日消耗/余额/已用额度/总额度（数值单位为元）。
-注意：PowerShell 下 curl 要用 curl.exe；带中文的 POST body 直接写在命令行会乱码报 Uncaught，必须走文件中转。
-
+注意：PowerShell 下 curl 要用 curl.exe；带中文的 POST body 直接写在命令行会乱码报 Uncaught，必须走文件中转。
+
 ## Kouri AI Token套餐查询流程
 1. 套餐页面不在仪表盘首页，需要进入 https://api.kourichat.com/dashboard/plans
 2. 侧边栏"Token 套餐"菜单是 span 元素，querySelector 用 :contains 无效，需用 JS 遍历匹配：
