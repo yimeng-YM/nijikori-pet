@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = {"README.md", "requirements.txt", "启动桌宠.bat", ".gitignore",
               "data/config.example.json", "data/README.md"}
-SOURCE_DIRS = {"src", "resources", "tests", "tools", "docs"}
+SOURCE_DIRS = {"src", "resources", "tools", "docs"}
 EXCLUDED_DIRS = {"__pycache__", ".git", "node_modules", ".venv", "venv", ".pytest_cache",
                  ".mypy_cache", ".ruff_cache", "_skills_backup", ".build"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".log", ".tmp", ".bak"}
