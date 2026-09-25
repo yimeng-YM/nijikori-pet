@@ -18,7 +18,7 @@ def main():
     if result.returncode:
         print((work / "build.log").read_text(encoding="utf-8", errors="replace")[-6000:])
         return result.returncode
-    print(f"EXE: {root / 'dist' / '虹语织-桌宠v3.exe'}")
+    print(f"EXE: {root / 'dist' / '虹语织-桌宠v3.1.exe'}")
     print(f"BUILD_SECONDS={time.monotonic() - started:.2f}")
     return 0
 

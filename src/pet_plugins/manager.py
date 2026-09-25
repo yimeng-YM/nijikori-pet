@@ -24,6 +24,8 @@ LOG_MAX_LINES = 800
 # 插件自己的状态文件目录（EXE 版 data_dir 就是 exe 目录，所以不能叫 "plugins"，
 # 否则会和用户插件目录撞在一起）
 STATE_DIR_NAME = "plugin_state"
+BUILTIN_CC_PAGES = frozenset(("overview", "behavior", "api", "schedule",
+                              "tools", "plugins", "memory", "system"))
 EXAMPLES_DIR_NAME = "_examples"
 PLUGINS_README = """虹语织 · 插件目录 (plugins)
 =============================
@@ -57,8 +59,8 @@ PLUGINS_README = """虹语织 · 插件目录 (plugins)
 所以第一次加载（或插件内容变化后）桌宠会弹窗请你确认一次，
 确认结果按内容哈希记在 data/plugin_trust.json 里，之后不再打扰。
 
-完整 API（接管已有工具、改提示词、加菜单、加表情动作、监听事件）
-见项目文档 docs/插件开发指南.md。
+完整 API（接管已有工具、改控制中心原有页面、读写人设、更新提示词、
+加菜单、加表情动作、监听事件）见 resources/skills/插件开发指南/SKILL.md。
 """
 
 
@@ -87,6 +89,7 @@ class PluginHost:
         self.on_tools_changed = kwargs.get("on_tools_changed")
         self.on_emotions_changed = kwargs.get("on_emotions_changed")
         self.on_actions_changed = kwargs.get("on_actions_changed")
+        self.on_pages_changed = kwargs.get("on_pages_changed")
         self.get_config = kwargs.get("get_config")
         self.set_config = kwargs.get("set_config")
         self.read_skill = kwargs.get("read_skill")
@@ -137,6 +140,7 @@ class PluginManager:
         self._prompts = []        # {"plugin","text","when","priority","seq"}
         self._menu = []           # {"plugin","icon","label","callback","where","order","seq"}
         self._cc = []             # {"plugin","key","icon","title","builder","seq"}
+        self._cc_modifiers = []   # {"plugin","key","builder","seq"}
         self._actions = {}        # action name -> {"plugin","handler","intensity","description"}
         self._seq = 0
         self._baseline = None
@@ -211,15 +215,16 @@ class PluginManager:
         if templates and os.path.isdir(templates):
             target = os.path.join(root, EXAMPLES_DIR_NAME)
             try:
-                if not os.path.isdir(target):
-                    os.makedirs(target, exist_ok=True)
-                    for entry in sorted(os.listdir(templates)):
-                        source = os.path.join(templates, entry)
-                        destination = os.path.join(target, entry)
-                        if os.path.isdir(source):
-                            shutil.copytree(source, destination)
-                        elif entry.lower().endswith(".py"):
-                            shutil.copy2(source, destination)
+                os.makedirs(target, exist_ok=True)
+                for entry in sorted(os.listdir(templates)):
+                    source = os.path.join(templates, entry)
+                    destination = os.path.join(target, entry)
+                    if os.path.exists(destination):
+                        continue  # 用户改过的示例文件不能覆盖
+                    if os.path.isdir(source):
+                        shutil.copytree(source, destination)
+                    elif entry.lower().endswith(".py"):
+                        shutil.copy2(source, destination)
             except OSError as exc:
                 self.log("system", f"播种示例插件失败: {exc}")
         return root
@@ -361,6 +366,7 @@ class PluginManager:
                        "pending": [c.name for c in approved if c.meta.get("trust") == "unknown"]}
             if loaded or failed:
                 self._notify_tools_changed()
+                self._notify_pages_changed()
             self.log("system", f"加载完成：成功 {len(loaded)}，失败 {len(failed)}，"
                                f"跳过 {len(summary['skipped'])}")
             return summary
@@ -457,6 +463,7 @@ class PluginManager:
         self._prompts.clear()
         self._menu.clear()
         self._cc.clear()
+        self._cc_modifiers.clear()
         self._actions.clear()
         self.hooks.clear()
 
@@ -473,6 +480,7 @@ class PluginManager:
             self._notify_tools_changed()
             self._notify_emotions_changed()
             self._notify_actions_changed()
+            self._notify_pages_changed()
             self.log("system", "已停用全部插件，能力已还原到基线")
             return {"loaded": [], "failed": [], "skipped": [], "disabled": True}
 
@@ -502,12 +510,14 @@ class PluginManager:
             candidate.meta["trust"] = "trusted"
             record = self._load_one(candidate)
             self._notify_tools_changed()
+            self._notify_pages_changed()
             return {"status": "success" if record.status == "loaded" else "error",
                     "message": (f"已启用插件 {name}" if record.status == "loaded"
                                 else f"插件 {name} 加载失败：{record.error}")}
         self.unload_one(name)
         self._record_skipped(candidate, "denied")
         self._notify_tools_changed()
+        self._notify_pages_changed()
         return {"status": "success", "message": f"已停用插件 {name}"}
 
     def unload_one(self, name):
@@ -624,18 +634,31 @@ class PluginManager:
                 slot["after"].append((api.name, after))
         return name
 
-    def add_prompt_block(self, api, text, *, priority=0, when=None):
+    def add_prompt_block(self, api, text, *, priority=0, when=None, key=None):
         if not callable(text) and not isinstance(text, str):
             raise PluginError("add_prompt_block 的 text 必须是字符串或可调用对象")
         if when is not None and not callable(when):
             raise PluginError("add_prompt_block 的 when 必须是可调用对象")
+        if key is not None and not str(key).strip():
+            raise PluginError("提示词段落 key 不能为空")
         with self._lock:
+            if key is not None:
+                self._prompts = [p for p in self._prompts
+                                 if not (p["plugin"] == api.name and p.get("key") == str(key))]
             self._seq += 1
             entry = {"plugin": api.name, "text": text, "when": when,
+                     "key": str(key) if key is not None else None,
                      "priority": int(priority or 0), "seq": self._seq}
             self._prompts.append(entry)
             self._prompts.sort(key=lambda e: (-e["priority"], e["seq"]))
         return entry
+
+    def remove_prompt_block(self, api, key):
+        with self._lock:
+            before = len(self._prompts)
+            self._prompts = [p for p in self._prompts
+                             if not (p["plugin"] == api.name and p.get("key") == str(key))]
+            return len(self._prompts) != before
 
     def add_menu_item(self, api, label, callback, *, icon="🧩", where="quick", order=50):
         if not callable(callback):
@@ -655,11 +678,62 @@ class PluginManager:
         with self._lock:
             self._seq += 1
             page_key = str(key or f"plugin:{api.name}")
+            if page_key in BUILTIN_CC_PAGES:
+                raise PluginError(f"{page_key} 是内置页面；请用 modify_control_center_page()")
             entry = {"plugin": api.name, "key": page_key, "icon": str(icon or "🧩"),
                      "title": str(title or api.name), "builder": builder, "seq": self._seq}
             self._cc = [p for p in self._cc if p["key"] != page_key]
             self._cc.append(entry)
         return entry
+
+    def modify_control_center_page(self, api, key, builder):
+        key = str(key or "").strip()
+        if key not in BUILTIN_CC_PAGES:
+            raise PluginError(f"未知内置页面 {key}；可选：{', '.join(sorted(BUILTIN_CC_PAGES))}")
+        if not callable(builder):
+            raise PluginError("modify_control_center_page 的 builder 必须是可调用对象")
+        with self._lock:
+            self._seq += 1
+            self._cc_modifiers = [m for m in self._cc_modifiers
+                                  if not (m["plugin"] == api.name and m["key"] == key)]
+            self._cc_modifiers.append({"plugin": api.name, "key": key,
+                                       "builder": builder, "seq": self._seq})
+        return key
+
+    def render_control_center_page(self, key, page, original):
+        """在 UI 线程按注册顺序包装内置分页；插件出错时回退原页面。"""
+        if key not in BUILTIN_CC_PAGES:
+            return original(page)
+        with self._lock:
+            modifiers = [m for m in self._cc_modifiers if m["key"] == key]
+            apis = {m["plugin"]: self.records.get(m["plugin"]) for m in modifiers}
+        render = lambda: original(page)
+        for entry in modifiers:
+            previous = render
+            record = apis.get(entry["plugin"])
+            if record is None or record.api is None:
+                continue
+
+            def render_one(entry=entry, previous=previous, api=record.api):
+                called = False
+
+                def call_original():
+                    nonlocal called
+                    if called:
+                        raise PluginError("call_original() 每次构建只能调用一次")
+                    called = True
+                    return previous()
+
+                try:
+                    return entry["builder"](page, api, call_original)
+                except Exception as exc:
+                    self.log(entry["plugin"], f"页面 {key} 渲染失败: {type(exc).__name__}: {exc}")
+                    if not called:
+                        return previous()
+                    return None
+
+            render = render_one
+        return render()
 
     def register_emotion(self, api, name, image, *, description="", text_bearing=False):
         name = str(name or "").strip()
@@ -733,6 +807,8 @@ class PluginManager:
             self._prompts = [p for p in self._prompts if p["plugin"] != plugin_name]
             self._menu = [m for m in self._menu if m["plugin"] != plugin_name]
             self._cc = [p for p in self._cc if p["plugin"] != plugin_name]
+            self._cc_modifiers = [m for m in self._cc_modifiers
+                                  if m["plugin"] != plugin_name]
             for name in [n for n, a in self._actions.items() if a["plugin"] == plugin_name]:
                 self._actions.pop(name, None)
             emotions = self.host.emotions if self.host else None
@@ -937,6 +1013,7 @@ class PluginManager:
             "prompt_blocks": len(self._prompts),
             "menu_items": len(self._menu),
             "pages": [p["key"] for p in self._cc],
+            "modified_pages": [m["key"] for m in self._cc_modifiers],
             "emotions": [str(e[0]) for e in (self.host.emotions if self.host else []) or []
                          if len(e) >= 2 and isinstance(e[1], str) and os.path.isabs(e[1])],
             "actions": sorted(self._actions),
@@ -966,3 +1043,11 @@ class PluginManager:
                 callback()
             except Exception as exc:
                 self.log("system", f"动作表变更通知失败: {exc}")
+
+    def _notify_pages_changed(self):
+        callback = getattr(self.host, "on_pages_changed", None) if self.host else None
+        if callable(callback):
+            try:
+                callback()
+            except Exception as exc:
+                self.log("system", f"控制中心页面变更通知失败: {exc}")

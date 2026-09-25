@@ -55,4 +55,4 @@ description: 虹语织核心配置文件 config.json 的查看、修改、安全
 1. **修改前确认**：在修改前必须先调用 `read_file_contents` 读取当前最新内容，核实 JSON 格式是否完整。
 2. **轻量改动**：改动单项（如修改 `model`、`wander_interval_secs`）时优先使用 `edit_text_file` 进行精确替换。
 3. **格式合规**：修改后确保 JSON 语法正确（无多余逗号、双引号闭合），避免程序启动报错。
-4. **安全保护**：严禁随意泄露或重置 `api_key`，修改 `system_prompt` 前需经主人确认。
+4. **安全保护**：严禁随意泄露或重置 `api_key`。主人明确要求修改人设即视为授权；若是织织主动提出修改 `system_prompt`，先请主人确认。安装了人设示例插件时，优先用 `manage_persona_prompt` 工具保存，避免手写整份配置。

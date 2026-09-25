@@ -78,9 +78,12 @@ def handle(args, pet):
 | 接管已有工具（含内置） | `api.override_tool(name, handler)` | handler 为 `(args, pet, call_original)`；返回 None 表示本次交回原实现 |
 | 只挂前后钩子 | `api.wrap_tool(name, before=..., after=...)` | before 返回 dict 即短路；after 返回 dict 即替换结果；工具名写 `"*"` 对全部工具生效 |
 | 加提示词 | `api.add_prompt_block(text_or_callable, when=...)` | 排在技能库之后注入，可条件生效 |
+| 更新/撤销插件提示词 | `api.add_prompt_block(text, key="设定")` / `api.remove_prompt_block("设定")` | key 只在本插件内生效；持久化正文可存入 `api.state` |
+| 读写人设 | `api.get_persona()` / `api.set_persona(text)` | 修改 config.json 的 `system_prompt`，下次模型请求生效 |
 | 监听事件 | `api.on(event, callback, priority=0)` | 回调第一个参数固定是 pet |
 | 加右键菜单项 | `api.add_menu_item(label, callback, icon="🧩", order=50)` | callback 接收 pet，在 UI 线程执行 |
 | 加控制中心页面 | `api.add_control_center_page(title, builder, icon="🧩")` | builder 签名 `(page_frame, api)`，用 `api.pet_ui()` 取同款控件 |
+| 改控制中心原有页面 | `api.modify_control_center_page(key, builder)` | builder 签名 `(page, api, call_original)`；可保留原页再改，或完全重绘 |
 | 加表情立绘 | `api.register_emotion(name, image, description=...)` | image 相对插件目录或绝对路径；支持 PNG / GIF / WebP |
 | 加自定义动作 | `api.register_action(name, handler, description=...)` | handler 为 `(pet, intensity)`，AI 可用 `perform_pet_action(action=name)` 调 |
 | 存自己的数据 | `api.state` / `api.save_state()` | 落在 `data\plugins\<插件名>.json` |
@@ -95,6 +98,13 @@ def handle(args, pet):
 其它常用：`api.dir`（插件目录）、`api.resolve("assets/x.png")`、`api.log(...)`、
 `api.show_speech(text, emotion, duration)`、`api.set_emotion(name)`、`api.get_pet()`、
 `api.on_unload(callback)`（重载/退出时收尾）、`api.is_frozen`、`api.host_dir`、`api.data_dir`。
+
+内置页面 key：`overview`、`behavior`、`api`、`schedule`、`tools`、`plugins`、`memory`、`system`。
+页面 builder 在 Tk UI 线程执行；工具 handler 在工作线程执行，改界面仍需 `api.call_on_ui`。
+停用插件时页面修改和提示词注入会撤销；`set_persona` 写入的主人配置会保留。
+
+示例 `resources/plugins/example_persona.py` 同时演示原有 API 页面改造、对话工具编辑人设、
+以及持久化插件提示词。到控制中心「插件扩展」启用示例后即可试用。
 
 ## 场景模板
 
@@ -128,10 +138,25 @@ def guard(args, pet):
     return None                            # None = 放行，继续原实现
 ```
 
-注意：插件接管的是「工具行为」，更外层的安全机制（工具禁用开关、删除/移文件的确认弹窗、
-定时命令授权、识图开关）仍在插件之前生效，**插件改不掉它们**，这是有意设计。
+注意：插件接管工具与页面时应保留必要的用户设置入口和确认行为。
 
-### ③ 加表情 + 自定义动作 + 菜单 + 控制中心页
+### ③ 改原有控制中心页面与动态提示词
+
+```python
+def register(api):
+    api.add_prompt_block(lambda pet: api.state.get("extra_prompt", ""), key="extra")
+    api.modify_control_center_page("api", build_api)
+
+def build_api(page, api, call_original):
+    call_original()  # 先构建原有「API 与模型」页，再对其控件作修改
+    # 此处可用 Tk 在 page 上增加控件，或操作原页已有控件
+
+def change_extra_prompt(api, text):
+    api.state["extra_prompt"] = text
+    api.save_state()  # 下次请求立即读取；重载后继续有效
+```
+
+### ④ 加表情 + 自定义动作 + 菜单 + 控制中心页
 
 ```python
 def register(api):
@@ -152,7 +177,7 @@ def build_page(page, api):
                 fg=ui["pal"]["ink_soft"], bg="#ffffff").pack(anchor="w")
 ```
 
-### ④ 监听事件（自动反应）
+### ⑤ 监听事件（自动反应）
 
 ```python
 def register(api):

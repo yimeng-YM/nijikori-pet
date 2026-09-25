@@ -54,10 +54,10 @@ def package_source(root=ROOT, output=None):
     if example.exists() and json.loads(example.read_text(encoding="utf-8-sig")).get("api_key"):
         raise ValueError("config.example.json 的 api_key 必须留空")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output = Path(output) if output else root / "release" / f"虹语织-桌宠v3-源码-{stamp}.zip"
+    output = Path(output) if output else root / "release" / f"虹语织-桌宠v3.1-源码-{stamp}.zip"
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    archive_root = "虹语织-桌宠v3-源码"
+    archive_root = "虹语织-桌宠v3.1-源码"
     manifest = {"format": 1, "created_at": datetime.now().isoformat(timespec="seconds"), "files": []}
     # Exclusive creation prevents overwriting any prior release.
     with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:

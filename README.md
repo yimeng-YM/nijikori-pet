@@ -2,7 +2,7 @@
 
 > 一个能陪你聊天、帮你干活、还会因为 API 余额告急而闹脾气的 Windows 桌面 AI 角色。
 
-![版本](https://img.shields.io/badge/version-3.0-blue)
+![版本](https://img.shields.io/badge/version-3.1-blue)
 ![平台](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB)
 ![许可证](https://img.shields.io/badge/license-未指定-orange)
@@ -48,7 +48,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 | 🖱️ **computer_use** | 直接操作软件界面：点击、拖动、滚动、输入、快捷键；每步自动回传快照，可串联多步动作 |
 | 💰 **额度查询** | 按 Base URL 自动探测多家供应商的余额/用量接口，低额度时切「想充电」情绪提醒你 |
 | ⏰ **富定时任务** | 自然语言或 5 段 cron 设定提醒与自动化，支持次数上限、截止日期与控制中心可视化管理 |
-| 🧩 **插件系统** | 丢一个 `.py` 进 `plugins/` 即可新增或**接管**工具、加控制中心页面、注册新表情与动作 |
+| 🧩 **插件系统** | 丢一个 `.py` 进 `plugins/` 即可新增或**接管**工具、修改控制中心原有页面、编辑人设与提示词、注册新表情与动作 |
 | 📚 **技能库** | 标准 Agent Skills 格式（`SKILL.md`），放入即自动加载，且她可以自己读写和新建技能 |
 | 🐾 **丰富互动** | 视线跟随、划动抚摸、滚轮挠痒、单击轻戳、双击彩蛋、拖拽落地、投喂文件彩蛋 |
 
@@ -82,8 +82,8 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 
 ### 方式一：使用打包好的 EXE（推荐）
 
-1. 从 [Releases](https://github.com/yimeng-YM/nijikori-pet/releases) 下载 `NijiKori-pet-v3.0-win64.exe`
-   （下载后可自行改名为 `虹语织-桌宠v3.exe`，不影响运行）。
+1. 从 [Releases](https://github.com/yimeng-YM/nijikori-pet/releases) 下载 `NijiKori-pet-v3.1-win64.exe`
+   （下载后可自行改名为 `虹语织-桌宠v3.1.exe`，不影响运行）。
 2. 双击运行。首次运行若弹出 SmartScreen 提示，点「更多信息」→「仍要运行」。
 3. 右键桌宠 → 「🎛 控制中心」，在「🔌 API 与模型」页填入 **API Base URL / API Key / 模型名称**。
 
@@ -292,8 +292,8 @@ def handle(args, pet):
 
 - 新增工具（AI 可直接调用）
 - **接管或包装已有工具**（含内置工具，例如改掉 `run_command`、`screenshot` 的行为）
-- 往系统提示词里加设定
-- 加右键快捷菜单项、控制中心页面
+- 往系统提示词里加设定，按 key 更新或移除插件自己的注入内容；读取或保存人设
+- 加右键快捷菜单项、新控制中心页面，或修改已有页面（`modify_control_center_page`）
 - 注册新表情立绘与自定义动作
 - 监听事件（启动 / 消息 / 回复 / 工具调用前后 / 表情变化 / 定时任务）
 
@@ -304,15 +304,16 @@ def handle(args, pet):
 - 新的（或**内容变化过的**）插件第一次加载时会弹窗列出插件名与路径，由你勾选确认；
 - 确认结果按**内容哈希**记录在 `data/plugin_trust.json`，之后静默加载；
 - 控制中心可随时停用/启用单个插件，也可用总开关 `enable_plugins` 一键关闭；
-- 插件自身的持久化数据放在 `data/plugins/<插件名>.json`，加载日志在 `data/plugins.log`。
+- 插件状态写入数据目录的 `plugin_state/<插件名>.json`，加载日志在数据目录的 `plugins.log`（源码版数据目录为 `data/`，EXE 版为 EXE 同级）。
 
-仓库自带 3 个示例插件（[`resources/plugins/`](resources/plugins)）：
+仓库自带 4 个示例插件（[`resources/plugins/`](resources/plugins)）：
 
 | 插件 | 演示内容 |
 | --- | --- |
 | `example_hello` | 最小插件：加工具 + 提示词 + 事件监听 |
 | `example_override` | 接管内置时间工具、给命令工具挂钩子、给打开网址加白名单拦截 |
 | `example_appearance` | 注册新表情与自定义动作、右键菜单项与控制中心页面 |
+| `example_persona` | 扩展原有「API 与模型」页，并让桌宠通过对话工具编辑人设与插件提示词 |
 
 首次运行会播种到 `plugins/_examples/`（**不会被自动加载**），可在「🧩 插件扩展」页一键启用，
 或把 `.py` 复制到 `plugins/` 根下。
@@ -363,7 +364,7 @@ python -m pip install pyinstaller
 python -B tools/build_exe.py
 ```
 
-输出 `dist/虹语织-桌宠v3.exe`（PyInstaller 单文件），构建日志在 `tools/.build/build.log`。
+输出 `dist/虹语织-桌宠v3.1.exe`（PyInstaller 单文件），构建日志在 `tools/.build/build.log`。
 临时输出全部收敛在 `tools/.build/`，不会污染项目根目录。
 
 ### 打包源码
@@ -372,7 +373,7 @@ python -B tools/build_exe.py
 python -B tools/package_source.py
 ```
 
-生成 `release/虹语织-桌宠v3-源码-<时间戳>.zip`，并附加 `SOURCE_MANIFEST.json`
+生成 `release/虹语织-桌宠v3.1-源码-<时间戳>.zip`，并附加 `SOURCE_MANIFEST.json`
 （逐文件 SHA-256）。打包脚本会主动校验：
 
 - `config.example.json` 的 `api_key` 必须留空；
@@ -433,18 +434,19 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 | 版本 | 日期 | 产物 | SHA-256 |
 | --- | --- | --- | --- |
+| v3.1 | 2026-09-25 | `NijiKori-pet-v3.1-win64.exe`<br>`NijiKori-pet-v3.1-source.zip` | 见 [v3.1 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1) |
 | v3.0 | 2026-09-23 | `NijiKori-pet-v3.0-win64.exe`（54.03 MiB）<br>`NijiKori-pet-v3.0-source.zip`（23.90 MiB） | `1317879c…ba2404`<br>`2899b1ec…bbd4ba` |
 
 发布产物由 [`tools/build_exe.py`](tools/build_exe.py) 与 [`tools/package_source.py`](tools/package_source.py)
 构建，打包前会校验不含个人数据（见 [构建与发布](#构建与发布)）。
 
 > 注：GitHub 会清洗 Release 资产名中的非 ASCII 字符，因此产物使用 ASCII 文件名，
-> 程序内部名称与界面仍为中文（`虹语织-桌宠v3`）。
+> 程序内部名称与界面仍为中文（`虹语织-桌宠v3.1`）。
 
 ---
 
 <div align="center">
 
-**虹语织 NijiKori v3.0** · Windows 原生桌面萌宠与 API 助手
+**虹语织 NijiKori v3.1** · Windows 原生桌面萌宠与 API 助手
 
 </div>

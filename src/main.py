@@ -134,7 +134,7 @@ DEFAULT_BASE_URL = "https://api.kourichat.com/v1"
 DEFAULT_API_KEY = ""  # never hardcoded; the key is read from config.json only
 # 不预置任何示例模型名：出厂 model 为空，用户按自己所用供应商的模型 ID 填写。
 DEFAULT_MODEL = ""
-APP_VERSION = "3.0"
+APP_VERSION = "3.1"
 
 # ---------------------------------------------------------------------------
 # Inbound request-header rule:
@@ -2590,8 +2590,13 @@ def _plugin_set_config(key, value):
     pet = _plugin_pet()
     if pet is None:
         return False
+    previous = copy.deepcopy(pet.config)
     pet.config[key] = value
-    return pet.save_config()
+    if pet.save_config():
+        return True
+    pet.config.clear()
+    pet.config.update(previous)
+    return False
 
 
 def _plugin_list_skills():
@@ -2660,6 +2665,13 @@ def _plugin_on_actions_changed():
         pet._tk_call(pet._refresh_action_catalog)
 
 
+def _plugin_on_pages_changed():
+    pet = _plugin_pet()
+    if pet is not None and hasattr(pet, "_tk_events"):
+        # 页面结构是应用状态；聊天回合取消也要刷新导航。
+        pet._tk_events.put((pet._cc_schedule_plugin_refresh, ()))
+
+
 try:
     _PLUGINS.attach(pet_plugins.PluginHost(
         pet_tools_module=_pet_tools_mod,
@@ -2679,6 +2691,7 @@ try:
         on_tools_changed=_plugin_on_tools_changed,
         on_emotions_changed=_plugin_on_emotions_changed,
         on_actions_changed=_plugin_on_actions_changed,
+        on_pages_changed=_plugin_on_pages_changed,
         get_config=_plugin_get_config,
         set_config=_plugin_set_config,
         read_skill=_plugin_read_skill,
@@ -2692,7 +2705,7 @@ PLUGIN_SYSTEM_GUIDE = """【插件系统（Plugins）—— 织织可以被扩�
 • 主人可以用插件给织织加新能力或改写已有能力：把 .py 文件放进插件文件夹即可，源码版与 EXE 版都是同一个目录——
   """ + PLUGINS_DIR + """。
 • 支持两种插件形态：单文件（plugins/我的工具.py）与文件夹（plugins/名字/plugin.py，可带自己的模块和资源）；以 _ 或 . 开头的文件/文件夹不会被加载。
-• 插件能做到：新增工具、接管或包装已有工具（含内置工具）、往系统提示词加内容、加右键菜单项与控制中心页面、注册新表情立绘与自定义动作、监听事件（启动/消息/工具调用前后/表情变化/定时任务）。
+• 插件能做到：新增工具、接管或包装已有工具（含内置工具）、按 key 更新/移除提示词段落、读写人设、加右键菜单项、新增或修改控制中心原有页面、注册新表情立绘与自定义动作、监听事件（启动/消息/工具调用前后/表情变化/定时任务）。
 • 安全机制：插件是任意 Python 代码，所以新插件（或内容变化过的插件）首次加载时主人会看到确认弹窗；确认结果按内容哈希记在 data/plugin_trust.json，之后静默加载。
 • 当主人问"能不能加个功能""怎么给织织加能力""插件怎么用"时，先读技能库里的「插件开发指南」技能（manage_skills action=read），按里面的模板写插件；
   写好 .py 放进插件文件夹后，用 manage_plugins action=reload 立即生效，并告诉主人加载结果。
@@ -4369,7 +4382,7 @@ BUILTIN_SKILLS = {
    - `harness_dsh_path`：可选，dsh 命令启动器完整路径（Harness 委托用）
 
 4. **核心设定**
-   - `system_prompt`：织织的角色设定与全局行为规范（修改前需主人确认）
+   - `system_prompt`：织织的角色设定与全局行为规范（主人明确要求修改即已授权）
 
 5. **额度查询（query_api_balance_and_usage）**
    - 按 `base_url` 自动探测账户额度：兼容 OpenAI 计费接口 / OneAPI / NewAPI 中转站、DeepSeek、OpenRouter、
@@ -4382,7 +4395,7 @@ BUILTIN_SKILLS = {
 2. **轻量改动**：改动单项（如 `model`、`wander_interval_secs`）优先用 `edit_text_file` 精确替换（注意 find_text 需唯一命中，带引号取值时要连同引号一起替换）。
 3. **格式合规**：修改后确保 JSON 语法正确（无多余逗号、双引号闭合），避免程序启动报错。
 4. **热更新**：织织运行时直接改 config.json 约 1 秒内热生效，不会被织织自己改回。
-5. **安全保护**：严禁随意泄露或重置 `api_key`；修改 `system_prompt` 前必须经主人确认。
+5. **安全保护**：严禁随意泄露或重置 `api_key`；主人明确要求修改人设即视为授权，若是织织主动提出修改则先请主人确认。若已安装人设示例插件，优先用 `manage_persona_prompt` 保存。
 """
     },
     "项目接手法": {
@@ -10968,6 +10981,26 @@ class DesktopPet:
         except Exception:
             pass
 
+    def _cc_schedule_plugin_refresh(self):
+        """插件重载后重建导航与当前页；等开关动画结束再操作控件。"""
+        win = getattr(self, "_cc_win", None)
+        if win is None or not win.winfo_exists():
+            return
+        if getattr(self, "_cc_plugin_refresh_job", None) is not None:
+            return
+
+        def refresh():
+            self._cc_plugin_refresh_job = None
+            old_key = getattr(self, "_cc_current", "overview")
+            if getattr(self, "_cc_win", None) is None:
+                return
+            self._cc_close()
+            self.open_control_center()
+            if old_key in self._cc_pages and old_key != "overview":
+                self._cc_show(old_key)
+
+        self._cc_plugin_refresh_job = self.root.after(380, refresh)
+
     def _cc_avatar(self, size):
         """Small rounded pet avatar photo for the control center."""
         try:
@@ -11022,7 +11055,11 @@ class DesktopPet:
                      initial=bool(self.always_on_top),
                      bg=PAL["bg"], width=int(40 * dpi), height=int(22 * dpi)).pack(side=tk.LEFT)
 
-        builder(page)
+        if key in ("overview", "behavior", "api", "schedule", "tools",
+                   "plugins", "memory", "system"):
+            _PLUGINS.render_control_center_page(key, page, builder)
+        else:
+            builder(page)
 
     # ---------- control-center shared building blocks ----------
     def _cc_scrollable(self, parent):

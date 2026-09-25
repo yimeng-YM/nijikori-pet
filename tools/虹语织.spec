@@ -57,7 +57,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='虹语织-桌宠v3',
+    name='虹语织-桌宠v3.1',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

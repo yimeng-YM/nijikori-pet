@@ -118,13 +118,29 @@ class PluginAPI:
     # ------------------------------------------------------------------
     # 提示词
     # ------------------------------------------------------------------
-    def add_prompt_block(self, text, *, priority=0, when=None):
+    def add_prompt_block(self, text, *, priority=0, when=None, key=None):
         """往系统提示词里追加一段内容（排在技能库之后）。
 
         text 可以是字符串，也可以是 ``callable(pet) -> str | None``（每次对话现算）。
         when 可选：``callable(pet) -> bool``，返回 False 时本回合不注入。
+        key 可选：同一插件内稳定的段落名；再次传同名 key 会更新原段落。
         """
-        return self._manager.add_prompt_block(self, text, priority=priority, when=when)
+        return self._manager.add_prompt_block(self, text, priority=priority,
+                                              when=when, key=key)
+
+    def remove_prompt_block(self, key):
+        """移除本插件用 key 注册的提示词段落。"""
+        return self._manager.remove_prompt_block(self, key)
+
+    def get_persona(self):
+        """读取当前人设正文（config.json 的 system_prompt）。"""
+        return self.get_config("system_prompt", "")
+
+    def set_persona(self, text):
+        """保存人设正文到 config.json；下次模型请求立即使用。"""
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("人设必须是非空文本")
+        return self.set_config("system_prompt", text)
 
     # ------------------------------------------------------------------
     # 事件
@@ -159,6 +175,14 @@ class PluginAPI:
         可用 ``api.pet_ui()`` 拿到桌宠同款控件（卡片/滚动区/按钮/配色）。
         """
         return self._manager.add_control_center_page(self, title, builder, icon=icon, key=key)
+
+    def modify_control_center_page(self, key, builder):
+        """修改已有控制中心分页。key 为 overview/behavior/api/schedule/tools/
+        plugins/memory/system；builder(page, api, call_original) 在 UI 线程执行。
+        可先调用 call_original() 再调整原控件，也可完全重绘该页。
+        插件停用后自动恢复原页面。
+        """
+        return self._manager.modify_control_center_page(self, key, builder)
 
     def pet_ui(self):
         """桌宠控制中心的同款 UI 工具箱（配色、DPI、卡片与按钮构造器）。"""
@@ -246,7 +270,7 @@ class PluginAPI:
         return self._state
 
     def save_state(self):
-        """把 ``api.state`` 写回 ``data/plugins/<插件名>.json``。"""
+        """把 ``api.state`` 写回数据目录的 ``plugin_state/<插件名>.json``。"""
         return self._manager.save_state(self.name, self.state)
 
     # ------------------------------------------------------------------
