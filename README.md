@@ -2,7 +2,7 @@
 
 > 一个能陪你聊天、帮你干活、还会因为 API 余额告急而闹脾气的 Windows 桌面 AI 角色。
 
-![版本](https://img.shields.io/badge/version-3.1-blue)
+![版本](https://img.shields.io/badge/version-3.2-blue)
 ![平台](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB)
 ![许可证](https://img.shields.io/badge/license-未指定-orange)
@@ -28,7 +28,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 - [技能库（Skills）](#技能库skills)
 - [插件开发（Plugins）](#插件开发plugins)
 - [项目结构](#项目结构)
-- [构建与发布](#构建与发布)
+- [下载与校验](#下载与校验)
 - [常见问题](#常见问题)
 - [已知限制](#已知限制)
 - [许可证](#许可证)
@@ -83,7 +83,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 ### 方式一：使用打包好的 EXE（推荐）
 
 1. 从 [最新 Release](https://github.com/yimeng-YM/nijikori-pet/releases/latest) 下载名称以 `-win64.exe` 结尾的文件
-   （下载后可自行改名为 `虹语织-桌宠v3.1.exe`，不影响运行）。
+   （下载后可自行改名为 `虹语织-桌宠v3.2.exe`，不影响运行）。
 2. 双击运行。首次运行若弹出 SmartScreen 提示，点「更多信息」→「仍要运行」。
 3. 右键桌宠 → 「控制中心」，在「API 与模型」页填入 **API Base URL / API Key / 模型名称**。
 
@@ -265,7 +265,7 @@ python -B src/main.py
 | `harness委托流程` | 向 DeepSeek Harness 委托任务 |
 
 她也可以通过 `manage_skills` 自主 `list` / `read` / `create` / `append` / `modify` / `delete` 技能 ——
-相处久了会自己攒下一套工作方法。控制中心「⚙️ 系统与关于」页可一键打开 Skills 文件夹手动编辑。
+相处久了会自己攒下一套工作方法。控制中心「系统与关于」页可一键打开 Skills 文件夹手动编辑。
 
 ---
 
@@ -291,7 +291,7 @@ def handle(args, pet):
     return {"status": "success", "message": f"收到：{args.get('text')}"}
 ```
 
-放到插件目录后，在控制中心「🧩 插件扩展」页点「🔄 重新加载插件」即可生效，
+放到插件目录后，在控制中心「插件扩展」页点「重新加载插件」即可生效，
 也可以直接对织织说「写个插件实现 XXX」——她会读技能库里的《插件开发指南》自己动手写。
 
 插件还能：
@@ -312,8 +312,8 @@ def handle(args, pet):
 - 控制中心可随时停用/启用单个插件，也可用总开关 `enable_plugins` 一键关闭；
 - 插件状态写入数据目录的 `plugin_state/<插件名>.json`，加载日志在数据目录的 `plugins.log`（源码版数据目录为 `data/`，EXE 版为 EXE 同级）。
 
-Git 仓库与 Release 的核心源码包不包含插件实现。将插件 `.py` 或插件文件夹放到本机 `plugins/` 目录即可使用。
-本地发行构建可携带以下示例插件模板：
+将插件 `.py` 或插件文件夹放到 `plugins/` 目录即可使用。
+示例插件提供以下能力：
 
 | 插件 | 演示内容 |
 | --- | --- |
@@ -359,31 +359,26 @@ Nijikori pet/
 └── 启动桌宠.bat            # 源码启动入口
 ```
 
-插件目录（`plugins/`、`resources/plugins/`）、`tests/`、`tools/`、`docs/`、开发工具配置、缓存、
-`dist/` 和 `release/` 仅保留本机，不纳入 Git。`src/pet_tools/` 与 `src/pet_plugins/` 是桌宠运行代码，保留在仓库中。
-
 ---
 
-## 构建与发布
+## 下载与校验
 
-EXE 由本地 PyInstaller 构建工具打包，安装、测试、构建和打包辅助脚本不提交到 Git。
-[Releases](https://github.com/yimeng-YM/nijikori-pet/releases) 提供 Windows EXE、核心源码压缩包和 `SHA256SUMS.txt`。
+从 [最新 Release](https://github.com/yimeng-YM/nijikori-pet/releases/latest) 下载：
 
-核心源码包来自 Release 对应的 Git 提交，仅包含运行代码、资源、依赖、启动入口和项目说明，
-并附加 `SOURCE_MANIFEST.json`（提交号与逐文件 SHA-256）。发布前会校验：
+| 文件 | 说明 |
+| --- | --- |
+| `NijiKori-pet-v3.2-win64.exe` | Windows 免安装单文件版 |
+| `NijiKori-pet-v3.2-source.zip` | 源码版，运行需 Python 3.11 |
+| `NijiKori-pet-v3.2-SHA256SUMS.txt` | 下载文件的 SHA-256 校验值 |
 
-- `config.example.json` 的 `api_key` 必须留空；
-- 压缩包内**不含** `config.json` / `memory.json` / `action_log.json` 等运行数据；
-- 每个文件哈希与清单一致，压缩包完整性可读。
-
-即：源码包可以安全分发，不会带上你的密钥与个人数据。
+源码运行步骤见 [快速开始](#快速开始)。
 
 ---
 
 ## 常见问题
 
 **无法对话或查余额？**
-检查控制中心「🔌 API 与模型」页的 Base URL / Key / Model 是否正确且网络通畅。
+检查控制中心「API 与模型」页的 Base URL / Key / Model 是否正确且网络通畅。
 若提示 403/无权限，说明该 Key 未开通对话模型权限 —— 但**额度查询接口通常仍然可用**。
 
 **托盘图标没显示？**
@@ -430,19 +425,17 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 | 版本 | 日期 | 产物 | SHA-256 |
 | --- | --- | --- | --- |
-| v3.1-noemoji-20261002 | 2026-10-02 | 去除界面 emoji、屏幕边界修复；Windows EXE 与核心源码包 | 见 [本次 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1-noemoji-20261002) |
+| v3.2 | 2026-10-02 | `NijiKori-pet-v3.2-win64.exe`<br>`NijiKori-pet-v3.2-source.zip` | 见 [v3.2 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.2) |
 | v3.1 | 2026-09-25 | `NijiKori-pet-v3.1-win64.exe`<br>`NijiKori-pet-v3.1-source.zip` | 见 [v3.1 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1) |
 | v3.0 | 2026-09-23 | `NijiKori-pet-v3.0-win64.exe`（54.03 MiB）<br>`NijiKori-pet-v3.0-source.zip`（23.90 MiB） | `1317879c…ba2404`<br>`2899b1ec…bbd4ba` |
 
-发布产物使用本地构建工具生成，发布前会校验不含个人运行数据（见 [构建与发布](#构建与发布)）。
-
 > 注：GitHub 会清洗 Release 资产名中的非 ASCII 字符，因此产物使用 ASCII 文件名，
-> 程序内部名称与界面仍为中文（`虹语织-桌宠v3.1`）。
+> 程序内部名称与界面仍为中文（`虹语织-桌宠v3.2`）。
 
 ---
 
 <div align="center">
 
-**虹语织 NijiKori v3.1** · Windows 原生桌面萌宠与 API 助手
+**虹语织 NijiKori v3.2** · Windows 原生桌面萌宠与 API 助手
 
 </div>

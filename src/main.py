@@ -135,7 +135,7 @@ DEFAULT_BASE_URL = "https://api.kourichat.com/v1"
 DEFAULT_API_KEY = ""  # never hardcoded; the key is read from config.json only
 # 不预置任何示例模型名：出厂 model 为空，用户按自己所用供应商的模型 ID 填写。
 DEFAULT_MODEL = ""
-APP_VERSION = "3.1"
+APP_VERSION = "3.2"
 
 # ---------------------------------------------------------------------------
 # Inbound request-header rule:
