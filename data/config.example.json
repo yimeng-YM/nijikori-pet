@@ -19,6 +19,7 @@
   "wander_interval_secs": 20.0,
   "max_tool_rounds": 80,
   "always_on_top": true,
+  "enable_screen_edge_limit": true,
   "vision_supported": false,
   "harness_dsh_path": "",
   "chat_size": {

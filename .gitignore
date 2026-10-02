@@ -5,14 +5,34 @@ action_log.json
 data/*
 !data/config.example.json
 !data/README.md
-# 用户插件目录（运行时生成，放在项目根；示例模板在 resources/plugins/）
+# 插件内容仅保留在本机：运行目录和内置模板都不提交到 Git
 /plugins/
+/resources/plugins/
+# 本地测试、烟测、安装/构建/打包辅助工具及设计文档
+/tests/
+/tools/
+/docs/
+# 开发工具的本机状态和配置
+/.kilo/
+/.codex/
+/.openai/
+/.vscode/
+/.idea/
+# 缓存、构建输出和发布产物
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
 build/
-tools/.build/
 dist/
 release/
+/*.exe
+/*.zip
+/*.7z
 .venv/
 node_modules/
 *.log

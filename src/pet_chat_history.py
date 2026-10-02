@@ -400,14 +400,11 @@ class ChatHistoryWindow:
         search_wrap = tk.Frame(bar, bg="#ffffff", highlightthickness=1,
                                highlightbackground=pal["line"])
         search_wrap.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(search_wrap, text="🔍", font=fonts["small"],
-                 fg=pal["ink_soft"], bg="#ffffff").pack(side=tk.LEFT,
-                                                        padx=(px(8), 0))
         self.search = tk.Entry(search_wrap, font=fonts["ui"], bg="#ffffff",
                                fg=pal["ink"], relief=tk.FLAT,
                                insertbackground=pal["peri"], highlightthickness=0)
         self.search.pack(side=tk.LEFT, fill=tk.X, expand=True,
-                         padx=(px(4), px(8)), ipady=px(5))
+                         padx=px(8), ipady=px(5))
         self._search_ph = _Placeholder(self.search, self.SEARCH_HINT,
                                        pal["ink"], pal["ink_dim"])
         # <Key> runs before Tk's class binding inserts the character, so the
@@ -916,7 +913,7 @@ class ChatHistoryWindow:
                  px(2), fill=col["tool_text"], outline="")
 
         text_x = pad + indent
-        canvas.create_text(text_x, y + px(10), text="🛠 工具调用", anchor="nw",
+        canvas.create_text(text_x, y + px(10), text="工具调用", anchor="nw",
                            fill=col["tool_text"], font=head_font)
         text_y = y + px(10) + head_h + px(6)
         for line in wrapped:
@@ -932,12 +929,10 @@ class ChatHistoryWindow:
         line1 = "没有找到匹配的记录" if searching else "还没有对话记录"
         line2 = ("换个关键词试试，或点「全部」看看别的记录～" if searching
                  else "去和织织聊两句，我们的聊天记录就会留在这里啦～")
-        top = max(px(70), canvas.winfo_height() // 2 - px(52))
-        canvas.create_text(width / 2, top, text="🫧",
-                           font=self.fonts["title"], fill=col["load_more_text"])
-        canvas.create_text(width / 2, top + px(38), text=line1,
+        top = max(px(70), canvas.winfo_height() // 2 - px(14))
+        canvas.create_text(width / 2, top, text=line1,
                            font=self.fonts["ui_bold"], fill=col["sys_text"])
-        canvas.create_text(width / 2, top + px(62), text=line2,
+        canvas.create_text(width / 2, top + px(24), text=line2,
                            font=self.fonts["small"], fill=col["meta"])
 
     def _draw_load_more(self, canvas, start, y, inner, col):

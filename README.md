@@ -82,10 +82,10 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 
 ### 方式一：使用打包好的 EXE（推荐）
 
-1. 从 [Releases](https://github.com/yimeng-YM/nijikori-pet/releases) 下载 `NijiKori-pet-v3.1-win64.exe`
+1. 从 [最新 Release](https://github.com/yimeng-YM/nijikori-pet/releases/latest) 下载名称以 `-win64.exe` 结尾的文件
    （下载后可自行改名为 `虹语织-桌宠v3.1.exe`，不影响运行）。
 2. 双击运行。首次运行若弹出 SmartScreen 提示，点「更多信息」→「仍要运行」。
-3. 右键桌宠 → 「🎛 控制中心」，在「🔌 API 与模型」页填入 **API Base URL / API Key / 模型名称**。
+3. 右键桌宠 → 「控制中心」，在「API 与模型」页填入 **API Base URL / API Key / 模型名称**。
 
 EXE 版是便携式：配置、记忆、日志、技能与插件都保存在 **EXE 同目录**，整个文件夹拷走即可迁移。
 
@@ -119,20 +119,25 @@ python -B src/main.py
 
 ### 右键菜单与系统托盘
 
-右键桌宠弹出快捷菜单：💬 聊天 / 💰 查询余额 / 📜 历史 / 🎛 控制中心 / 🔄 重启 / ❌ 退出。
-托盘图标常驻：左键显示/隐藏桌宠，右键含显示隐藏、打开对话、打开控制中心、窗口置顶、退出。
+右键桌宠弹出快捷菜单：聊天 / 查询余额 / 历史 / 控制中心 / 屏幕边框限制 / 重启 / 退出。
+托盘图标常驻：左键显示/隐藏桌宠，右键含显示隐藏、打开对话、打开控制中心、窗口置顶、屏幕边框限制、退出。
 
-### 控制中心（7 个分页）
+屏幕边框限制默认开启，可在控制中心「外观与互动」、右键菜单或托盘菜单切换。启动、调整大小以及分辨率/显示器工作区变化后，桌宠会回到可用屏幕内（支持负坐标副屏、相邻屏幕间移动，避开任务栏与显示器间空隙）。关闭后允许部分移出屏幕；完全离屏或只剩透明边缘时仍会自动找回。
+
+### 控制中心（8 个分页）
 
 | 页面 | 内容 |
 | --- | --- |
-| 🏠 概览 | 状态一览 + 快捷操作 + 行为开关速达 |
-| 🎨 外观与互动 | 尺寸滑杆（100~420px 实时生效）、自由漫步、悬浮呼吸感、视线跟随、窗口置顶、命令确认、休眠与漫步节奏 |
-| 🔌 API 与模型 | API 配置、本地搜索设置、工具轮次上限、电量阈值与巡检间隔、Harness 接口、识图开关 |
-| ⏰ 定时任务 | 可视化增删改查定时任务，与对话中设定的任务实时同步 |
-| 🛠 工具能力 | 按分类查看全部 AI 工具，搜索过滤，开关即时生效 |
-| 🧠 记忆档案 | 查看/编辑/重置用户画像与核心记忆（JSON） |
-| ⚙️ 系统与关于 | 打开 Skills 文件夹、打开 config.json、清空对话记忆、重启、退出 |
+| 概览 | 状态一览 + 快捷操作 + 行为开关速达 |
+| 外观与互动 | 尺寸滑杆（100~420px 实时生效）、自由漫步、悬浮呼吸感、视线跟随、窗口置顶、屏幕边框限制、命令确认、休眠与漫步节奏 |
+| API 与模型 | API 配置、本地搜索设置、工具轮次上限、电量阈值与巡检间隔、Harness 接口、识图开关 |
+| 定时任务 | 可视化增删改查定时任务，与对话中设定的任务实时同步 |
+| 工具能力 | 按分类查看全部 AI 工具，搜索过滤，开关即时生效 |
+| 插件扩展 | 插件开关、信任确认、加载状态与能力清单 |
+| 记忆档案 | 查看/编辑/重置用户画像与核心记忆（JSON） |
+| 系统与关于 | 打开 Skills 文件夹、打开 config.json、清空对话记忆、重启、退出 |
+
+菜单、控制中心、历史窗口和确认弹窗使用纯文字标签，不显示装饰性 emoji。
 
 ### 对话窗口
 
@@ -230,6 +235,7 @@ python -B src/main.py
 | `low_balance_threshold` / `balance_check_interval_mins` | 电量告急阈值与巡检间隔 |
 | `sleep_timeout_mins` / `wander_interval_secs` | 休眠时长 / 漫步间隔 |
 | `always_on_top` / `pet_size` | 窗口置顶 / 立绘尺寸 |
+| `enable_screen_edge_limit` | 屏幕边框限制，默认 `true`；关闭后仍保留完全离屏恢复 |
 | `confirm_before_command` | 执行命令前是否弹窗确认 |
 | `enable_plugins` / `plugin_trust_required` | 插件总开关 / 加载前是否弹窗确认 |
 | `web_search_timeout_secs` / `web_search_max_results` | 搜索总超时与默认结果数 |
@@ -306,7 +312,8 @@ def handle(args, pet):
 - 控制中心可随时停用/启用单个插件，也可用总开关 `enable_plugins` 一键关闭；
 - 插件状态写入数据目录的 `plugin_state/<插件名>.json`，加载日志在数据目录的 `plugins.log`（源码版数据目录为 `data/`，EXE 版为 EXE 同级）。
 
-仓库自带 4 个示例插件（[`resources/plugins/`](resources/plugins)）：
+Git 仓库与 Release 的核心源码包不包含插件实现。将插件 `.py` 或插件文件夹放到本机 `plugins/` 目录即可使用。
+本地发行构建可携带以下示例插件模板：
 
 | 插件 | 演示内容 |
 | --- | --- |
@@ -315,10 +322,12 @@ def handle(args, pet):
 | `example_appearance` | 注册新表情与自定义动作、右键菜单项与控制中心页面 |
 | `example_persona` | 扩展原有「API 与模型」页，并让桌宠通过对话工具编辑人设与插件提示词 |
 
-首次运行会播种到 `plugins/_examples/`（**不会被自动加载**），可在「🧩 插件扩展」页一键启用，
+如果发行构建携带模板，首次运行会播种到 `plugins/_examples/`（**不会被自动加载**），可在「插件扩展」页一键启用，
 或把 `.py` 复制到 `plugins/` 根下。
 
-完整 API 与可复制模板见 [插件开发指南](resources/skills/插件开发指南/SKILL.md) 与 [功能说明](docs/功能说明.md)。
+QQ 等独立插件需要另行安装，并按插件自带说明配置。
+
+完整 API 与可复制模板见 [插件开发指南](resources/skills/插件开发指南/SKILL.md)。
 
 ---
 
@@ -332,6 +341,7 @@ Nijikori pet/
 │   ├── pet_search.py       # 本机联网搜索
 │   ├── pet_paths.py        # 路径定位与旧布局迁移
 │   ├── pet_config.py       # 配置校验与热更新
+│   ├── pet_screen.py       # 多显示器工作区、屏幕边界限制与离屏恢复
 │   ├── pet_io.py           # 原子写入与文本读取
 │   ├── pet_snapshot.py     # 截图工具
 │   ├── pet_chat_*.py       # 对话输入 / 渲染 / 历史
@@ -343,38 +353,24 @@ Nijikori pet/
 ├── resources/              # 静态资源
 │   ├── assets/             # 立绘、气泡、图标、layered/ 分层动画
 │   ├── prompt.txt          # 人设提示词
-│   ├── skills/             # 内置技能库
-│   └── plugins/            # 自带示例插件
+│   └── skills/             # 内置技能库
 ├── data/                   # 配置、记忆、操作日志（仅示例入库）
-├── docs/                   # 使用说明、功能说明、设计记录与审查报告
-├── tools/                  # 构建与打包脚本（build_exe.py / package_source.py / .spec）
-├── dist/                   # 构建产物：Windows EXE（不进版本库）
-├── release/                # 时间戳发布包与历史归档（不进版本库）
-└── plugins/                # 【运行时生成】用户插件目录
+├── requirements.txt        # 运行依赖
+└── 启动桌宠.bat            # 源码启动入口
 ```
+
+插件目录（`plugins/`、`resources/plugins/`）、`tests/`、`tools/`、`docs/`、开发工具配置、缓存、
+`dist/` 和 `release/` 仅保留本机，不纳入 Git。`src/pet_tools/` 与 `src/pet_plugins/` 是桌宠运行代码，保留在仓库中。
 
 ---
 
 ## 构建与发布
 
-### 构建 EXE
+EXE 由本地 PyInstaller 构建工具打包，安装、测试、构建和打包辅助脚本不提交到 Git。
+[Releases](https://github.com/yimeng-YM/nijikori-pet/releases) 提供 Windows EXE、核心源码压缩包和 `SHA256SUMS.txt`。
 
-```powershell
-python -m pip install pyinstaller
-python -B tools/build_exe.py
-```
-
-输出 `dist/虹语织-桌宠v3.1.exe`（PyInstaller 单文件），构建日志在 `tools/.build/build.log`。
-临时输出全部收敛在 `tools/.build/`，不会污染项目根目录。
-
-### 打包源码
-
-```powershell
-python -B tools/package_source.py
-```
-
-生成 `release/虹语织-桌宠v3.1-源码-<时间戳>.zip`，并附加 `SOURCE_MANIFEST.json`
-（逐文件 SHA-256）。打包脚本会主动校验：
+核心源码包来自 Release 对应的 Git 提交，仅包含运行代码、资源、依赖、启动入口和项目说明，
+并附加 `SOURCE_MANIFEST.json`（提交号与逐文件 SHA-256）。发布前会校验：
 
 - `config.example.json` 的 `api_key` 必须留空；
 - 压缩包内**不含** `config.json` / `memory.json` / `action_log.json` 等运行数据；
@@ -434,11 +430,11 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 | 版本 | 日期 | 产物 | SHA-256 |
 | --- | --- | --- | --- |
+| v3.1-noemoji-20261002 | 2026-10-02 | 去除界面 emoji、屏幕边界修复；Windows EXE 与核心源码包 | 见 [本次 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1-noemoji-20261002) |
 | v3.1 | 2026-09-25 | `NijiKori-pet-v3.1-win64.exe`<br>`NijiKori-pet-v3.1-source.zip` | 见 [v3.1 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1) |
 | v3.0 | 2026-09-23 | `NijiKori-pet-v3.0-win64.exe`（54.03 MiB）<br>`NijiKori-pet-v3.0-source.zip`（23.90 MiB） | `1317879c…ba2404`<br>`2899b1ec…bbd4ba` |
 
-发布产物由 [`tools/build_exe.py`](tools/build_exe.py) 与 [`tools/package_source.py`](tools/package_source.py)
-构建，打包前会校验不含个人数据（见 [构建与发布](#构建与发布)）。
+发布产物使用本地构建工具生成，发布前会校验不含个人运行数据（见 [构建与发布](#构建与发布)）。
 
 > 注：GitHub 会清洗 Release 资产名中的非 ASCII 字符，因此产物使用 ASCII 文件名，
 > 程序内部名称与界面仍为中文（`虹语织-桌宠v3.1`）。

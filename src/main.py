@@ -34,6 +34,7 @@ import pet_quota
 from pet_search import perform_web_search, DEFAULT_TIMEOUT as SEARCH_TIMEOUT, DEFAULT_LIMIT as SEARCH_LIMIT
 from pet_search_prompt import WEB_SEARCH_DESCRIPTION, QUERY_DESCRIPTION, build_search_prompt
 from pet_paths import PATHS, prepare_data_dir
+from pet_screen import monitor_work_areas, safe_pet_position, nearest_area, clamp_to_area
 import pet_plugins
 from pet_plugins import PLUGINS as _PLUGINS
 import hashlib
@@ -194,6 +195,7 @@ DEFAULT_HARNESS_STATUS_URL = "http://127.0.0.1:3080/api/dshpet/status"  # DeepSe
 DEFAULT_HARNESS_POLL_INTERVAL_SECS = 2.0  # 轮询 Harness 工作状态间隔 (秒)
 HARNESS_THINKING_RESET_MS = 30000  # 思考中表情最长保持时间，即使 Harness 仍在运行也会自动复位 (毫秒)
 DEFAULT_ALWAYS_ON_TOP = True  # 默认桌宠窗口固定在桌面最上层（窗口置顶）
+DEFAULT_SCREEN_EDGE_LIMIT = True
 
 # ---------------------------------------------------------------------------
 # 识图（Vision）能力：是否开放 read_image（读图）工具，由用户纯手动配置。
@@ -1133,12 +1135,12 @@ def ask_command_confirmation(cmd, description="", title="安全确认", prompt="
     # Buttons (always visible at the bottom)
     btn_frame = tk.Frame(win, bg=PAL["bg"])
     btn_frame.pack(fill="x", padx=int(16 * dpi), pady=(0, int(14 * dpi)))
-    tk.Button(btn_frame, text="❌ 拒绝", command=do_cancel,
+    tk.Button(btn_frame, text="拒绝", command=do_cancel,
               bg=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
               activebackground=PAL["btn_soft_hover"], relief=tk.FLAT,
               font=("Microsoft YaHei UI", 11), padx=int(20 * dpi),
               pady=int(6 * dpi)).pack(side="right", padx=(int(8 * dpi), 0))
-    tk.Button(btn_frame, text="✅ 确认执行", command=do_confirm,
+    tk.Button(btn_frame, text="确认执行", command=do_confirm,
               bg=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
               activebackground=PAL["btn_primary_hover"], relief=tk.FLAT,
               font=("Microsoft YaHei UI", 11, "bold"), padx=int(20 * dpi),
@@ -1379,11 +1381,10 @@ class ToggleSwitch(tk.Canvas):
 
 
 class SideNavItem(tk.Canvas):
-    """Sidebar navigation pill (icon + label) with hover & selected states."""
+    """Text sidebar navigation pill with hover & selected states."""
 
     def __init__(self, master, icon, text, command, width=196, height=40,
                  bg=PAL["panel2"], font=None):
-        self._icon = icon
         self._text = text
         self._cmd = command
         self._cv_w = int(width)
@@ -1422,7 +1423,7 @@ class SideNavItem(tk.Canvas):
         else:
             fg = PAL["ink_soft"]
         self.create_text(self._cv_w / 2, self._cv_h / 2,
-                         text=f"{self._icon}  {self._text}",
+                         text=self._text,
                          font=self._font, fill=fg)
 
 
@@ -1561,20 +1562,22 @@ class QuickMenu(tk.Toplevel):
         self.attributes("-topmost", True)
 
         items = [
-            ("💬", "与织织聊天", pet.open_chat_window),
-            ("💰", "查询 API 余额", pet.trigger_quota_check),
-            ("📜", "对话历史", pet.open_history_window),
+            ("与织织聊天", pet.open_chat_window),
+            ("查询 API 余额", pet.trigger_quota_check),
+            ("对话历史", pet.open_history_window),
         ]
         # 插件注册的菜单项（排在固定项之前，随插件加载/重载动态变化）
         try:
             for item in pet._plugin_menu_items():
-                items.append((item["icon"], item["label"], item["callback"]))
+                items.append((item["label"], item["callback"]))
         except Exception:
             pass
         items += [None,
-                  ("🎛", "控制中心", pet.open_control_center),
-                  ("🔄", "重启桌宠", pet.restart_pet),
-                  ("❌", "退出桌宠", pet.quit_pet),
+                  ("控制中心", pet.open_control_center),
+                  ("屏幕边框限制：" + ("开启" if pet.enable_screen_edge_limit else "关闭"),
+                   pet.toggle_screen_edge_limit),
+                  ("重启桌宠", pet.restart_pet),
+                  ("退出桌宠", pet.quit_pet),
                   ]
         row_h = int(38 * dpi)
         pad = int(9 * dpi)
@@ -1582,7 +1585,7 @@ class QuickMenu(tk.Toplevel):
         width = int(226 * dpi)
         # 插件菜单项名字可能较长：按实际文字宽度放宽（上限避免超出屏幕）
         try:
-            needed = [pet.f_ui.measure(str(it[1])) + int(96 * dpi) for it in items if it]
+            needed = [pet.f_ui.measure(str(it[0])) + int(64 * dpi) for it in items if it]
             if needed:
                 width = max(width, min(int(360 * dpi), max(needed)))
         except Exception:
@@ -1609,14 +1612,12 @@ class QuickMenu(tk.Toplevel):
                                fill=PAL["line_soft"])
                 cy += sep_h
                 continue
-            icon, label, cmd = it
+            label, cmd = it
             tag = f"row{cy}"
             bg_id = rounded_rect(cv, x0, cy, x1, cy + row_h, int(10 * dpi),
                                  fill="#ffffff", outline="", width=0,
                                  tags=(tag,))
-            cv.create_text(x0 + int(12 * dpi), cy + row_h // 2, text=icon,
-                           font=pet.f_ui, fill=PAL["ink"], tags=(tag,))
-            cv.create_text(x0 + int(40 * dpi), cy + row_h // 2, text=label,
+            cv.create_text(x0 + int(18 * dpi), cy + row_h // 2, text=label,
                            anchor="w", font=pet.f_ui, fill=PAL["ink"],
                            tags=(tag,))
 
@@ -1640,9 +1641,8 @@ class QuickMenu(tk.Toplevel):
         self.bind("<FocusOut>", lambda e: self._dismiss())
         cv.bind("<Button-1>", lambda e: self._dismiss())
 
-        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        nx = max(0, min(x, sw - width - 4))
-        ny = max(0, min(y, sh - height - 4))
+        area = nearest_area(x, y, width, height, pet._screen_areas)
+        nx, ny = clamp_to_area(x, y, width, height, area)
         self.geometry(f"+{nx}+{ny}")
         self.lift()
         self.focus_force()
@@ -4144,6 +4144,7 @@ def load_config(strict=False):
         "wander_interval_secs": DEFAULT_WANDER_INTERVAL_SECS,
         "max_tool_rounds": 80,  # 单轮对话工具调用链上限（支持长工具循环，最高 300）
         "always_on_top": DEFAULT_ALWAYS_ON_TOP,
+        "enable_screen_edge_limit": DEFAULT_SCREEN_EDGE_LIMIT,
         "vision_supported": DEFAULT_VISION_SUPPORTED,  # 识图：true=手动开启, false=关闭（纯手动配置）
         "system_prompt": load_default_prompt()
     }
@@ -4923,6 +4924,9 @@ class DesktopPet:
 
         # ---- Window always-on-top (窗口置顶) ----
         self.always_on_top = bool(self.config.get("always_on_top", DEFAULT_ALWAYS_ON_TOP))
+        self.enable_screen_edge_limit = bool(self.config.get(
+            "enable_screen_edge_limit", DEFAULT_SCREEN_EDGE_LIMIT))
+        self._screen_areas = monitor_work_areas(self.root)
 
         # ---- Feed easter egg (拖文件到桌宠身上触发喂食) ----
         self._feed_seq = 0                 # guards against stale drop callbacks
@@ -4995,7 +4999,12 @@ class DesktopPet:
         # attached only after the window is mapped.)
         x = self.config.get("x", 400)
         y = self.config.get("y", 300)
+        x, y = safe_pet_position(x, y, self.size, self._screen_areas,
+                                restrict=self.enable_screen_edge_limit)
         self.root.geometry(f"{self.size}x{self.size}+{x}+{y}")
+        if (x, y) != (self.config.get("x"), self.config.get("y")):
+            self.config.update(x=x, y=y)
+            self.save_config()
         try:
             self.root.update_idletasks()
             self.root.update()
@@ -5063,6 +5072,7 @@ class DesktopPet:
 
         # Start Physics, Floating & Wandering motion tick loop (30 FPS)
         self.root.after(33, self._motion_tick)
+        self.root.after(1000, self._screen_guard_tick)
 
     # ------------------------------------------------------------------
     # Live config.json support: hot reload + safe merge. Manual edits made
@@ -5165,6 +5175,8 @@ class DesktopPet:
                 self.apply_always_on_top(aat)
         except Exception as e:
             print(f"[config-reload] topmost: {e}")
+        self.enable_screen_edge_limit = bool(new.get(
+            "enable_screen_edge_limit", DEFAULT_SCREEN_EDGE_LIMIT))
         # Behavior flags read live by the motion loop.
         self.enable_wandering = bool(new.get("enable_wandering", DEFAULT_ENABLE_WANDERING))
         self.enable_floating = bool(new.get("enable_floating", DEFAULT_ENABLE_FLOATING))
@@ -5187,10 +5199,15 @@ class DesktopPet:
                 if nx is not None and ny is not None:
                     if (abs(int(nx) - self.root.winfo_x()) > 1
                             or abs(int(ny) - self.root.winfo_y()) > 1):
-                        self.root.geometry(f"+{int(nx)}+{int(ny)}")
-                        self.config["x"] = int(nx)
-                        self.config["y"] = int(ny)
+                        requested = int(nx), int(ny)
+                        nx, ny = self._set_pet_position(nx, ny, recover=True)
+                        self.config["x"] = nx
+                        self.config["y"] = ny
+                        self.root.update_idletasks()
+                        if (nx, ny) != requested:
+                            self.save_config()
                         self.update_bubble_position()
+            self._ensure_pet_on_screen()
         except Exception as e:
             print(f"[config-reload] position: {e}")
         # Emotion sprite.
@@ -5428,19 +5445,79 @@ class DesktopPet:
         self.save_config()
         if not self.enable_wandering and self.is_wandering:
             self.stop_wandering(arrived=False)
-        msg = "🐾 自由漫步已开启！织织会在闲暇时在屏幕里散步哦！(〃'▽'〃)" if self.enable_wandering else "🐾 自由漫步已暂停，织织会乖乖待在原地~ (∪｡∪)"
+        msg = "自由漫步已开启！织织会在闲暇时在屏幕里散步哦！(〃'▽'〃)" if self.enable_wandering else "自由漫步已暂停，织织会乖乖待在原地~ (∪｡∪)"
         self.show_speech(msg, "默认", 3000)
 
     def toggle_floating(self):
         self.enable_floating = not self.enable_floating
         self.config["enable_floating"] = self.enable_floating
         self.save_config()
-        msg = "✨ 悬浮呼吸感已开启！织织轻飘飘地浮起来啦~ (つ✧ω✧)つ" if self.enable_floating else "✨ 悬浮呼吸感已关闭。(〃'▽'〃)"
+        msg = "悬浮呼吸感已开启！织织轻飘飘地浮起来啦~ (つ✧ω✧)つ" if self.enable_floating else "悬浮呼吸感已关闭。(〃'▽'〃)"
         self.show_speech(msg, "默认", 3000)
 
     # ------------------------------------------------------------------
     # 📌 Window always-on-top (窗口置顶) — pet + speech bubble follow together
     # ------------------------------------------------------------------
+    def _set_pet_position(self, x, y, *, recover=False):
+        """All pet moves share the same boundary policy (Tk accepts +- origins)."""
+        x, y = int(round(x)), int(round(y))
+        if self.enable_screen_edge_limit or recover:
+            x, y = safe_pet_position(x, y, self.size, self._screen_areas,
+                                    restrict=self.enable_screen_edge_limit)
+        self.root.geometry(f"{self.size}x{self.size}+{x}+{y}")
+        return x, y
+
+    def _ensure_pet_on_screen(self, *, force=False):
+        x, y = self.root.winfo_x(), self.root.winfo_y()
+        nx, ny = safe_pet_position(x, y, self.size, self._screen_areas,
+                                  restrict=force or self.enable_screen_edge_limit)
+        if (nx, ny) != (x, y):
+            self.is_wandering = False
+            self.is_navigating = False
+            self.is_thrown = False
+            self.attached_window = None
+            self.nav_callback = None
+            self.next_wander_time = time.time() + self.wander_interval
+            self._set_pet_position(nx, ny)
+            self.root.update_idletasks()
+            self.config.update(x=nx, y=ny)
+            self.save_config()
+            self.update_bubble_position()
+            if self.chat_open:
+                self._reposition_chat_window_near_pet()
+        return nx, ny
+
+    def _screen_guard_tick(self):
+        """Refresh after resolution/taskbar/monitor changes, even while hidden."""
+        try:
+            areas = monitor_work_areas(self.root)
+            if areas != self._screen_areas:
+                # Saved movement destinations can refer to a removed monitor.
+                self.is_wandering = False
+                self.is_navigating = False
+                self.nav_callback = None
+                self.next_wander_time = time.time() + self.wander_interval
+            self._screen_areas = areas
+            if not self.is_dragging:
+                self._ensure_pet_on_screen()
+        except Exception as exc:
+            print(f"[screen-guard] {type(exc).__name__}: {exc}")
+        finally:
+            if self.monitor_running:
+                self.root.after(1000, self._screen_guard_tick)
+
+    def _cc_set_screen_edge_limit(self, enabled):
+        self.enable_screen_edge_limit = bool(enabled)
+        self.config["enable_screen_edge_limit"] = self.enable_screen_edge_limit
+        self._screen_areas = monitor_work_areas(self.root)
+        self._ensure_pet_on_screen()
+        self.save_config()
+        if self._tray_icon is not None:
+            self._tray_icon.update_menu()
+
+    def toggle_screen_edge_limit(self):
+        self._cc_set_screen_edge_limit(not self.enable_screen_edge_limit)
+
     def apply_always_on_top(self, enabled=None):
         """Apply the always-on-top state to the pet window and its speech
         bubble. The bubble must not out-rank the pet, otherwise it would
@@ -5475,8 +5552,8 @@ class DesktopPet:
                 ti.update_menu()
         except Exception:
             pass
-        msg = ("📌 织织已牢牢钉在屏幕最上层，谁也盖不住织织啦！(✧∇✧)" if self.always_on_top
-               else "📌 终止置顶~ 织织可以躲在别的窗口后面休息了。(〃'ω'〃)")
+        msg = ("织织已牢牢钉在屏幕最上层，谁也盖不住织织啦！(✧∇✧)" if self.always_on_top
+               else "终止置顶~ 织织可以躲在别的窗口后面休息了。(〃'ω'〃)")
         self.show_speech(msg, "默认", 3000)
 
     # ------------------------------------------------------------------
@@ -5767,6 +5844,8 @@ class DesktopPet:
                 pystray.MenuItem("显示 / 隐藏桌宠", self._tray_toggle, default=True),
                 pystray.MenuItem("打开对话窗口", self._tray_chat),
                 pystray.MenuItem("打开控制中心", self._tray_cc),
+                pystray.MenuItem("屏幕边框限制", self._tray_screen_edge_limit,
+                                 checked=lambda item: self.enable_screen_edge_limit),
                 pystray.MenuItem(
                     "窗口置顶 (Always On Top)", self._tray_topmost,
                     checked=lambda item: self.always_on_top),
@@ -5789,11 +5868,16 @@ class DesktopPet:
     def _tray_topmost(self, icon=None, item=None):
         self._tk_events.put((self.toggle_always_on_top, ()))
 
+    def _tray_screen_edge_limit(self, icon=None, item=None):
+        self._tk_events.put((self.toggle_screen_edge_limit, ()))
+
     def _tray_quit(self, icon=None, item=None):
         self._tk_events.put((self.quit_pet, ()))
 
     def _do_tray_toggle(self):
         if self.root.state() == "withdrawn":
+            self._screen_areas = monitor_work_areas(self.root)
+            self._ensure_pet_on_screen()
             self.root.deiconify()
             self.touch_interaction()
         else:
@@ -6100,11 +6184,13 @@ class DesktopPet:
         px = self.root.winfo_x()
         py = self.root.winfo_y()
         bw, bh = self.bubble_geo
+        area = nearest_area(px, py, self.size, self.size, self._screen_areas)
         bx = px + (self.size // 2) - (bw // 2)
         by = py - bh - int(8 * self.dpi_scale)
-        if by < 0:
+        if by < area[1]:
             # pet at the very top of the screen: flip the bubble below the pet
             by = py + self.size + int(12 * self.dpi_scale)
+        bx, by = clamp_to_area(bx, by, bw, bh, area)
         self.bubble.geometry(f"{int(bw)}x{int(bh)}+{int(bx)}+{int(by)}")
 
     def _queue_emotion_bubble(self, emotion_name):
@@ -6639,15 +6725,9 @@ class DesktopPet:
         """Intentionally navigate the pet to specific screen coordinates."""
         try:
             dpi = self.dpi_scale
-            sw = self.root.winfo_screenwidth()
-            sh = self.root.winfo_screenheight()
-            min_x = int(25 * dpi)
-            max_x = max(min_x, int(sw - self.size - 25 * dpi))
-            min_y = int(25 * dpi)
-            max_y = max(min_y, int(sh - self.size - 80 * dpi))
-
-            tx = max(min_x, min(max_x, int(tx)))
-            ty = max(min_y, min(max_y, int(ty)))
+            tx, ty = int(tx), int(ty)
+            if self.enable_screen_edge_limit:
+                tx, ty = safe_pet_position(tx, ty, self.size, self._screen_areas)
 
             self.touch_interaction()
             if self.is_wandering:
@@ -6655,7 +6735,7 @@ class DesktopPet:
 
             if speed == "instant":
                 self.is_navigating = False
-                self.root.geometry(f"+{tx}+{ty}")
+                tx, ty = self._set_pet_position(tx, ty, recover=True)
                 self.config["x"] = tx
                 self.config["y"] = ty
                 try:
@@ -6696,7 +6776,7 @@ class DesktopPet:
         if arrived:
             tx = getattr(self, "nav_target_x", self.root.winfo_x())
             ty = getattr(self, "nav_target_y", self.root.winfo_y())
-            self.root.geometry(f"+{tx}+{ty}")
+            tx, ty = self._set_pet_position(tx, ty, recover=True)
             self.config["x"] = tx
             self.config["y"] = ty
             try:
@@ -6848,7 +6928,11 @@ class DesktopPet:
                         step = min(step_speed, dist)
                         nx = wx + (dx / dist) * step
                         ny = wy + (dy / dist) * step
-                        self.root.geometry(f"+{int(round(nx))}+{int(round(ny))}")
+                        placed = self._set_pet_position(nx, ny)
+                        if placed == (wx, wy):
+                            # Disconnected monitors cannot be reached by a
+                            # continuous on-screen walk; finish at the safe target.
+                            self.stop_navigation(arrived=True)
                         self.update_bubble_position()
                         if getattr(self, "chat_open", False):
                             self._reposition_chat_window_near_pet()
@@ -6875,7 +6959,7 @@ class DesktopPet:
                         step = min(speed, dist)
                         nx = wx + (dx / dist) * step
                         ny = wy + (dy / dist) * step
-                        self.root.geometry(f"+{int(round(nx))}+{int(round(ny))}")
+                        self._set_pet_position(nx, ny)
                         self.update_bubble_position()
                         if dx < -10 * dpi:
                             self.set_facing("left")
@@ -6905,15 +6989,15 @@ class DesktopPet:
         """Pick a destination within the safe screen area and start walking."""
         try:
             dpi = self.dpi_scale
-            sw = self.root.winfo_screenwidth()
-            sh = self.root.winfo_screenheight()
-            min_x = int(40 * dpi)
-            max_x = max(min_x + 100, int(sw - self.size - 40 * dpi))
-            min_y = int(40 * dpi)
-            max_y = max(min_y + 100, int(sh - self.size - 85 * dpi))
-
             cx = self.root.winfo_x()
             cy = self.root.winfo_y()
+            left, top, right, bottom = nearest_area(cx, cy, self.size, self.size,
+                                                   self._screen_areas)
+            pad = int(40 * dpi)
+            min_x = min(left + pad, max(left, right - self.size))
+            max_x = max(min_x, right - self.size - pad)
+            min_y = min(top + pad, max(top, bottom - self.size))
+            max_y = max(min_y, bottom - self.size - pad)
 
             dist = random.uniform(120, 320) * dpi
             angle = random.uniform(0, 2.0 * math.pi)
@@ -7037,13 +7121,15 @@ class DesktopPet:
         if self.is_drag_moved:
             x = self.root.winfo_x() + (event.x - self.drag_x)
             y = self.root.winfo_y() + (event.y - self.drag_y)
-            self.root.geometry(f"+{x}+{y}")
+            self._set_pet_position(x, y)
             self.update_bubble_position()
 
     def on_drag_end(self, event):
         self.is_dragging = False
         self.touch_interaction()
         if self.is_drag_moved:
+            self.root.update_idletasks()
+            self._ensure_pet_on_screen()
             px = self.root.winfo_x()
             py = self.root.winfo_y()
             self.config["x"] = px
@@ -7150,7 +7236,10 @@ class DesktopPet:
         else:
             self.canvas.coords(self.sprite_item, self.size // 2, self.size // 2)
         self.set_emotion(self.current_emotion)
-        self.root.geometry(f"{self.size}x{self.size}+{self.root.winfo_x()}+{self.root.winfo_y()}")
+        self._set_pet_position(self.root.winfo_x(), self.root.winfo_y(), recover=True)
+        self.root.update_idletasks()
+        self.config.update(x=self.root.winfo_x(), y=self.root.winfo_y())
+        self.save_config()
         # keep the head bubble in sync with the new pet size
         if self.bubble.winfo_viewable() and getattr(self, "_last_speech_text", None):
             self._render_bubble(self._last_speech_text)
@@ -7452,7 +7541,7 @@ class DesktopPet:
         except Exception:
             pass
 
-        tk.Label(win, text="🧩  发现新的桌宠插件", font=self.f_title, fg=PAL["peri_deep"],
+        tk.Label(win, text="发现新的桌宠插件", font=self.f_title, fg=PAL["peri_deep"],
                  bg=PAL["bg"]).pack(anchor="w", padx=int(20 * dpi), pady=(int(16 * dpi), int(4 * dpi)))
         tk.Label(win, text="插件就是任意 Python 代码，加载后可以读写你的文件、执行命令、访问网络，"
                            "等同于把本机权限交给它。\n只加载你信任的插件；确认后桌宠会按内容哈希记住，"
@@ -7495,7 +7584,7 @@ class DesktopPet:
 
         bar = tk.Frame(win, bg=PAL["bg"])
         bar.pack(fill=tk.X, padx=int(20 * dpi), pady=(0, int(16 * dpi)))
-        PastelButton(bar, "✅ 加载所选插件", command=confirm, parent_bg=PAL["bg"],
+        PastelButton(bar, "加载所选插件", command=confirm, parent_bg=PAL["bg"],
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
@@ -7504,7 +7593,7 @@ class DesktopPet:
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT,
                                                                  padx=(int(8 * dpi), 0))
-        PastelButton(bar, "📂 打开插件文件夹",
+        PastelButton(bar, "打开插件文件夹",
                      command=lambda: self._cc_open_path(PLUGINS_DIR), parent_bg=PAL["bg"],
                      fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
@@ -10669,7 +10758,7 @@ class DesktopPet:
                 def on_no_model():
                     self._active_cancel_event = None
                     self._sync_chat_action()
-                    tip = "呜...还没填对话模型呢，去控制中心「🔌 接口与模型」页填上就能聊天啦 (〃' ‸ '〃)"
+                    tip = "呜...还没填对话模型呢，去控制中心「接口与模型」页填上就能聊天啦 (〃' ‸ '〃)"
                     self.show_speech(tip, "疑惑", 6000, hide_in_chat=True)
                     self.show_dialog_line("系统", tip)
                     self._hist_write("系统提示: ", "sys")
@@ -10919,12 +11008,12 @@ class DesktopPet:
         # persistent quick actions: chat & balance always one click away
         qrow = tk.Frame(side, bg=PAL["panel2"])
         qrow.pack(pady=(int(10 * dpi), int(2 * dpi)))
-        PastelButton(qrow, "💬 聊天", command=self.open_chat_window,
+        PastelButton(qrow, "聊天", command=self.open_chat_window,
                      parent_bg=PAL["panel2"], fill=PAL["btn_primary"],
                      fg=PAL["btn_primary_fg"], hover=PAL["btn_primary_hover"],
                      font=self.f_ui, padx=int(11 * dpi), pady=int(5 * dpi)).pack(
                          side=tk.LEFT, padx=(0, int(6 * dpi)))
-        PastelButton(qrow, "💰 余额", command=self.trigger_quota_check,
+        PastelButton(qrow, "余额", command=self.trigger_quota_check,
                      parent_bg=PAL["panel2"], fill="#ffffff",
                      fg=PAL["btn_soft_fg"], hover=PAL["btn_soft_hover"],
                      font=self.f_ui, padx=int(11 * dpi), pady=int(5 * dpi)).pack(side=tk.LEFT)
@@ -10933,14 +11022,14 @@ class DesktopPet:
         nav_box.pack(fill=tk.X, padx=int(10 * dpi), pady=int(6 * dpi))
 
         pages = [
-            ("overview", "🏠", "概览", self._cc_page_overview),
-            ("behavior", "🎨", "外观与互动", self._cc_page_behavior),
-            ("api", "🔌", "API 与模型", self._cc_page_api),
-            ("schedule", "⏰", "定时任务", self._cc_page_schedule),
-            ("tools", "🛠", "工具能力", self._cc_page_tools),
-            ("plugins", "🧩", "插件扩展", self._cc_page_plugins),
-            ("memory", "🧠", "记忆档案", self._cc_page_memory),
-            ("system", "⚙️", "系统与关于", self._cc_page_system),
+            ("overview", "", "概览", self._cc_page_overview),
+            ("behavior", "", "外观与互动", self._cc_page_behavior),
+            ("api", "", "API 与模型", self._cc_page_api),
+            ("schedule", "", "定时任务", self._cc_page_schedule),
+            ("tools", "", "工具能力", self._cc_page_tools),
+            ("plugins", "", "插件扩展", self._cc_page_plugins),
+            ("memory", "", "记忆档案", self._cc_page_memory),
+            ("system", "", "系统与关于", self._cc_page_system),
         ]
         # 插件自己注册的控制中心页面接在固定页之后
         try:
@@ -11044,7 +11133,7 @@ class DesktopPet:
 
         head = tk.Frame(page, bg=PAL["bg"])
         head.pack(fill=tk.X, padx=int(26 * dpi), pady=(int(20 * dpi), int(8 * dpi)))
-        tk.Label(head, text=f"{icon}  {label}", font=self.f_h1, fg=PAL["ink"],
+        tk.Label(head, text=label, font=self.f_h1, fg=PAL["ink"],
                  bg=PAL["bg"]).pack(side=tk.LEFT)
 
         pin_row = tk.Frame(head, bg=PAL["bg"])
@@ -11112,7 +11201,7 @@ class DesktopPet:
         return body, bind_wheel
 
     def _cc_card(self, parent, title=None, icon=None, subtitle=None):
-        """White flat card with a soft border and optional header row."""
+        """White flat card with a text header; icon kept for plugin compatibility."""
         dpi = self.dpi_scale
         card = tk.Frame(parent, bg="#ffffff", highlightthickness=1,
                         highlightbackground=PAL["line_soft"], bd=0)
@@ -11122,7 +11211,7 @@ class DesktopPet:
         if title:
             head = tk.Frame(inner, bg="#ffffff")
             head.pack(fill=tk.X, pady=(0, int(10 * dpi)))
-            tk.Label(head, text=(f"{icon} {title}" if icon else title),
+            tk.Label(head, text=title,
                      font=self.f_h2, fg=PAL["ink"], bg="#ffffff").pack(side=tk.LEFT)
             if subtitle:
                 tk.Label(head, text=subtitle, font=self.f_small, fg=PAL["ink_dim"],
@@ -11130,13 +11219,13 @@ class DesktopPet:
         return inner
 
     def _cc_toggle_row(self, parent, icon, title, desc, value, on_change):
-        """One settings row: icon+title+desc on the left, toggle switch right."""
+        """Text settings row; icon kept for plugin compatibility."""
         dpi = self.dpi_scale
         row = tk.Frame(parent, bg="#ffffff")
         row.pack(fill=tk.X, pady=int(7 * dpi))
         left = tk.Frame(row, bg="#ffffff")
         left.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(left, text=f"{icon} {title}", font=self.f_ui_bold, fg=PAL["ink"],
+        tk.Label(left, text=title, font=self.f_ui_bold, fg=PAL["ink"],
                  bg="#ffffff").pack(anchor="w")
         if desc:
             tk.Label(left, text=desc, font=self.f_small, fg=PAL["ink_soft"],
@@ -11317,41 +11406,44 @@ class DesktopPet:
                      bg="#ffffff").pack(side=tk.LEFT)
 
         # quick actions
-        card = self._cc_card(body, title="快捷操作", icon="⚡")
+        card = self._cc_card(body, title="快捷操作")
         row = tk.Frame(card, bg="#ffffff")
         row.pack(fill=tk.X, pady=int(2 * dpi))
-        PastelButton(row, "💬 打开对话窗口", command=self.open_chat_window,
+        PastelButton(row, "打开对话窗口", command=self.open_chat_window,
                      parent_bg="#ffffff", fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
-        PastelButton(row, "📜 对话历史", command=self.open_history_window,
+        PastelButton(row, "对话历史", command=self.open_history_window,
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
-        PastelButton(row, "💰 查询 API 余额", command=self.trigger_quota_check,
+        PastelButton(row, "查询 API 余额", command=self.trigger_quota_check,
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
-        PastelButton(row, "🗂 Skills 文件夹", command=self.open_skills_folder,
+        PastelButton(row, "Skills 文件夹", command=self.open_skills_folder,
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
 
         # behavior quick toggles
-        card = self._cc_card(body, title="行为开关", icon="🎛",
+        card = self._cc_card(body, title="行为开关",
                              subtitle="点击立即生效并写入 config.json")
-        self._cc_toggle_row(card, "🐾", "自由漫步 (Wandering)",
+        self._cc_toggle_row(card, "", "自由漫步 (Wandering)",
                             "待机闲暇时，织织会在屏幕安全区域内小碎步散步",
                             bool(self.enable_wandering), self._cc_set_wander)
-        self._cc_toggle_row(card, "✨", "悬浮呼吸感 (Floating)",
+        self._cc_toggle_row(card, "", "悬浮呼吸感 (Floating)",
                             "待机时以正弦浮动上下轻飘，更有生命呼吸感",
                             bool(self.enable_floating), self._cc_set_float)
-        self._cc_toggle_row(card, "👀", "视线跟随鼠标 (Mouse Facing)",
+        self._cc_toggle_row(card, "", "视线跟随鼠标 (Mouse Facing)",
                             "实时感知鼠标位置，自动转身朝向主人光标方向",
                             bool(self.enable_mouse_facing), self._cc_set_facing)
-        self._cc_toggle_row(card, "📌", "窗口置顶 (Always On Top)",
+        self._cc_toggle_row(card, "", "窗口置顶 (Always On Top)",
                             "把织织固定在所有窗口最上层（与头顶气泡同步）",
                             bool(self.always_on_top), self._cc_set_topmost)
+        self._cc_toggle_row(card, "▣", "屏幕边框限制",
+                            "开启时限制在显示器工作区内；关闭后可部分移出，完全离屏会自动找回",
+                            self.enable_screen_edge_limit, self._cc_set_screen_edge_limit)
         bind_wheel()
 
     # ---------- page: appearance & behavior ----------
@@ -11359,7 +11451,7 @@ class DesktopPet:
         dpi = self.dpi_scale
         body, bind_wheel = self._cc_scrollable(page)
 
-        card = self._cc_card(body, title="桌宠大小", icon="🎚",
+        card = self._cc_card(body, title="桌宠大小",
                              subtitle="拖动滑杆松开即生效，也可点选预设")
         row = tk.Frame(card, bg="#ffffff")
         row.pack(fill=tk.X)
@@ -11393,27 +11485,30 @@ class DesktopPet:
                          padx=int(9 * dpi), pady=int(4 * dpi), radius=10).pack(
                              side=tk.LEFT, padx=(0, int(6 * dpi)))
 
-        card = self._cc_card(body, title="行为开关", icon="🎛",
+        card = self._cc_card(body, title="行为开关",
                              subtitle="点击立即生效并写入 config.json")
-        self._cc_toggle_row(card, "🐾", "自由漫步 (Wandering)",
+        self._cc_toggle_row(card, "", "自由漫步 (Wandering)",
                             "待机闲暇时，织织会在屏幕安全区域内小碎步散步",
                             bool(self.enable_wandering), self._cc_set_wander)
-        self._cc_toggle_row(card, "✨", "悬浮呼吸感 (Floating)",
+        self._cc_toggle_row(card, "", "悬浮呼吸感 (Floating)",
                             "待机时以正弦浮动上下轻飘，更有生命呼吸感",
                             bool(self.enable_floating), self._cc_set_float)
-        self._cc_toggle_row(card, "👀", "视线跟随鼠标 (Mouse Facing)",
+        self._cc_toggle_row(card, "", "视线跟随鼠标 (Mouse Facing)",
                             "实时感知鼠标位置，自动转身朝向主人光标方向",
                             bool(self.enable_mouse_facing), self._cc_set_facing)
-        self._cc_toggle_row(card, "📌", "窗口置顶 (Always On Top)",
+        self._cc_toggle_row(card, "", "窗口置顶 (Always On Top)",
                             "把织织固定在所有窗口最上层（与头顶气泡同步）",
                             bool(self.always_on_top), self._cc_set_topmost)
-        self._cc_toggle_row(card, "🔐", "执行命令前确认 (Confirm Before Command)",
+        self._cc_toggle_row(card, "▣", "屏幕边框限制",
+                            "开启时限制在显示器工作区内；关闭后可部分移出，完全离屏会自动找回",
+                            self.enable_screen_edge_limit, self._cc_set_screen_edge_limit)
+        self._cc_toggle_row(card, "", "执行命令前确认 (Confirm Before Command)",
                             "AI 运行命令等敏感操作前先弹窗请求主人确认",
                             bool(self.config.get("confirm_before_command",
                                                  DEFAULT_CONFIRM_BEFORE_COMMAND)),
                             self._cc_set_confirm)
 
-        card = self._cc_card(body, title="节奏与性能", icon="⏱")
+        card = self._cc_card(body, title="节奏与性能")
         e_sleep = self._cc_field(card, "长时间未互动休眠待机时长（分钟，超时切为睡觉）",
                                  str(self.config.get("sleep_timeout_mins",
                                                      DEFAULT_SLEEP_TIMEOUT_MINS)))
@@ -11455,7 +11550,7 @@ class DesktopPet:
         dpi = self.dpi_scale
         body, bind_wheel = self._cc_scrollable(page)
 
-        conn = self._cc_card(body, title="接口与模型", icon="🔌",
+        conn = self._cc_card(body, title="接口与模型",
                              subtitle="修改后点击下方「保存并应用」生效")
         e_url = self._cc_field(conn, "API Base URL（接口地址）",
                                self.config.get("base_url", DEFAULT_BASE_URL))
@@ -11474,9 +11569,9 @@ class DesktopPet:
         def toggle_key():
             state["visible"] = not state["visible"]
             e_key.config(show="" if state["visible"] else "●")
-            btn_eye.config(text="🙈 隐藏" if state["visible"] else "👁 显示")
+            btn_eye.config(text="隐藏" if state["visible"] else "显示")
 
-        btn_eye = tk.Button(key_row, text="👁 显示", command=toggle_key,
+        btn_eye = tk.Button(key_row, text="显示", command=toggle_key,
                             bg=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                             activebackground=PAL["btn_soft_hover"], relief=tk.FLAT,
                             font=self.f_small, padx=int(8 * dpi), bd=0, cursor="hand2")
@@ -11488,7 +11583,7 @@ class DesktopPet:
         e_rounds = self._cc_field(conn, "单轮对话工具调用链上限 max_tool_rounds（10 ~ 300）",
                                   str(int(self.config.get("max_tool_rounds", 80) or 80)))
 
-        search = self._cc_card(body, title="本地联网搜索", icon="🌐")
+        search = self._cc_card(body, title="本地联网搜索")
         tk.Label(search, text="本机直连百度、Brave、必应、360、DuckDuckGo，自动切换线路。\n"
                               "无需搜索模型或密钥；返回网页来源，重复搜索缓存 2 分钟。",
                  font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
@@ -11498,7 +11593,7 @@ class DesktopPet:
         e_search_limit = self._cc_field(search, "默认结果数（1 ~ 10）",
                                         str(self.config.get("web_search_max_results", SEARCH_LIMIT)))
 
-        money = self._cc_card(body, title="电量巡检", icon="💰")
+        money = self._cc_card(body, title="电量巡检")
         tk.Label(money, text="自动按你填写的 API 地址探测账户额度：兼容 OpenAI 计费接口 / OneAPI / NewAPI 中转站、\n"
                              "DeepSeek、OpenRouter、硅基流动、Moonshot(Kimi) 等常见额度接口，其他接口也会自动尝试。\n"
                              "阈值按账户币种比较（美元账户填美元金额，人民币账户填人民币金额）。",
@@ -11512,8 +11607,8 @@ class DesktopPet:
                                     str(self.config.get("balance_check_interval_mins",
                                                         DEFAULT_BALANCE_CHECK_INTERVAL_MINS)))
 
-        harness = self._cc_card(body, title="Harness 监控", icon="🤖")
-        self._cc_toggle_row(harness, "🤖", "显示 DeepSeek Harness 工作状态并提醒",
+        harness = self._cc_card(body, title="Harness 监控")
+        self._cc_toggle_row(harness, "", "显示 DeepSeek Harness 工作状态并提醒",
                             "跟随本机 DSH Harness 的工作状态切换「思考中」表情",
                             bool(self.config.get("enable_harness_monitor",
                                                  DEFAULT_ENABLE_HARNESS_MONITOR)),
@@ -11522,8 +11617,8 @@ class DesktopPet:
                                        self.config.get("harness_status_url",
                                                        DEFAULT_HARNESS_STATUS_URL))
 
-        vision = self._cc_card(body, title="识图能力", icon="👁")
-        self._cc_toggle_row(vision, "👁", "开启识图 / 读图与截图回传",
+        vision = self._cc_card(body, title="识图能力")
+        self._cc_toggle_row(vision, "", "开启识图 / 读图与截图回传",
                             "开启 read_image 与截图回传（screenshot 不保存时直接给 AI 看、computer_use 操作后自动回传窗口快照）；关闭后 screenshot 仍可保存文件。请确认模型支持图片输入",
                             bool(self.config.get("vision_supported",
                                                  DEFAULT_VISION_SUPPORTED)),
@@ -11565,7 +11660,7 @@ class DesktopPet:
             self.save_config()
             self.show_speech("API 配置已保存并生效！(〃'▽'〃)", "默认", 3000)
 
-        PastelButton(save_card, "💾 保存并应用", command=save_api, parent_bg=PAL["bg"],
+        PastelButton(save_card, "保存并应用", command=save_api, parent_bg=PAL["bg"],
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(18 * dpi), pady=int(8 * dpi)).pack(side=tk.RIGHT)
@@ -11757,15 +11852,15 @@ class DesktopPet:
             refresh()
             self.show_speech("好的！织织这就执行～(〃'▽'〃)", "默认", 2500)
 
-        mbutton("➕ 新增", lambda: self._schedule_edit_dialog(self._cc_win, None, refresh),
+        mbutton("新增", lambda: self._schedule_edit_dialog(self._cc_win, None, refresh),
                 fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"], hover=PAL["btn_primary_hover"])
-        mbutton("✏ 编辑选中", lambda: self._schedule_edit_dialog(self._cc_win, selected_task(), refresh))
-        mbutton("⚡ 立即执行", on_fire_now)
-        mbutton("🗑 删除选中", on_delete, fill=PAL["btn_danger"],
+        mbutton("编辑选中", lambda: self._schedule_edit_dialog(self._cc_win, selected_task(), refresh))
+        mbutton("立即执行", on_fire_now)
+        mbutton("删除选中", on_delete, fill=PAL["btn_danger"],
                 fg=PAL["btn_danger_fg"], hover=PAL["btn_danger_hover"])
-        mbutton("🧹 清空全部", on_clear, fill=PAL["btn_danger"],
+        mbutton("清空全部", on_clear, fill=PAL["btn_danger"],
                 fg=PAL["btn_danger_fg"], hover=PAL["btn_danger_hover"])
-        mbutton("🔄 刷新", lambda: refresh())
+        mbutton("刷新", lambda: refresh())
 
         refresh(keep_selection=False)
 
@@ -11898,7 +11993,7 @@ class DesktopPet:
         failed = [r for r in records if r["status"] == "failed"]
         denied = [r for r in records if r["status"] == "denied"]
 
-        card = self._cc_card(body, title="插件系统", icon="🧩",
+        card = self._cc_card(body, title="插件系统",
                              subtitle="放 .py 进插件文件夹即可扩展织织")
         tk.Label(card, text=f"插件文件夹：{status['plugins_dir']}",
                  font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
@@ -11928,34 +12023,34 @@ class DesktopPet:
                 self.show_speech(message, "默认", 2500)
             self._cc_plugins_schedule_refresh()
 
-        self._cc_toggle_row(card, "🧩", "启用插件系统",
+        self._cc_toggle_row(card, "", "启用插件系统",
                             "关掉会立即卸下所有插件、把能力还原成原始状态（插件目录与信任记录保留）",
                             bool(status["enabled"]),
                             lambda v: set_enabled("enable_plugins", v,
                                                   "插件系统已开启！" if v else "插件系统已关闭，织织回到原始状态。"))
-        self._cc_toggle_row(card, "🔐", "加载新插件前弹窗确认",
+        self._cc_toggle_row(card, "", "加载新插件前弹窗确认",
                             "插件是任意 Python 代码，首次加载（或内容变化后）先问过你一次更稳妥",
                             bool(status["trust_required"]),
                             lambda v: set_enabled("plugin_trust_required", v))
 
         row = tk.Frame(card, bg="#ffffff")
         row.pack(fill=tk.X, pady=(int(8 * dpi), 0))
-        PastelButton(row, "📂 打开插件文件夹", command=self._cc_plugins_open_folder,
+        PastelButton(row, "打开插件文件夹", command=self._cc_plugins_open_folder,
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT,
                                                                  padx=(0, int(8 * dpi)))
-        PastelButton(row, "🔄 重新加载插件", command=self._cc_plugins_reload,
+        PastelButton(row, "重新加载插件", command=self._cc_plugins_reload,
                      parent_bg="#ffffff", fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT,
                                                                  padx=(0, int(8 * dpi)))
-        PastelButton(row, "✨ 启用示例插件", command=self._cc_plugins_examples,
+        PastelButton(row, "启用示例插件", command=self._cc_plugins_examples,
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT)
 
-        card = self._cc_card(body, title="插件清单", icon="📋",
+        card = self._cc_card(body, title="插件清单",
                              subtitle="下划线开头的文件不会被加载，示例放在 _examples/")
         if not records:
             tk.Label(card, text="还没有插件。把 .py 放进插件文件夹，或点上面的「启用示例插件」看看样例。",
@@ -11966,8 +12061,8 @@ class DesktopPet:
             row.pack(fill=tk.X, pady=int(5 * dpi))
             left = tk.Frame(row, bg="#ffffff")
             left.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            badge = {"loaded": "✅ 已加载", "failed": "❌ 加载失败",
-                     "denied": "⏸ 未启用"}.get(record["status"], record["status"])
+            badge = {"loaded": "已加载", "failed": "加载失败",
+                     "denied": "未启用"}.get(record["status"], record["status"])
             tk.Label(left, text=f"{record['name']}　{badge}", font=self.f_ui_bold,
                      fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
             tk.Label(left, text=str(record["path"]), font=self.f_small, fg=PAL["ink_dim"],
@@ -11996,7 +12091,7 @@ class DesktopPet:
         if status["prompt_blocks"]:
             provided.append(f"提示词段落：{status['prompt_blocks']} 段")
         provided.append(f"插件页面：{len(status['pages'])} 个")
-        card = self._cc_card(body, title="插件带来的能力", icon="🎁")
+        card = self._cc_card(body, title="插件带来的能力")
         for line in provided:
             tk.Label(card, text="• " + line, font=self.f_small, fg=PAL["ink_soft"],
                      bg="#ffffff", justify="left",
@@ -12150,7 +12245,7 @@ class DesktopPet:
                 txt.insert(tk.END, json.dumps(self.memory, ensure_ascii=False, indent=2))
                 self.show_speech("长期记忆已全部初始化！(〃'▽'〃)", "默认", 3000)
 
-        PastelButton(btns, "💾 保存修改", command=do_save_mem, parent_bg=PAL["bg"],
+        PastelButton(btns, "保存修改", command=do_save_mem, parent_bg=PAL["bg"],
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(16 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT)
@@ -12164,39 +12259,39 @@ class DesktopPet:
         dpi = self.dpi_scale
         body, bind_wheel = self._cc_scrollable(page)
 
-        card = self._cc_card(body, title="文件与数据", icon="📂")
+        card = self._cc_card(body, title="文件与数据")
         tk.Label(card, text=f"配置文件：{CONFIG_FILE}", font=self.f_small,
                  fg=PAL["ink_soft"], bg="#ffffff").pack(anchor="w", pady=(0, int(8 * dpi)))
         row = tk.Frame(card, bg="#ffffff")
         row.pack(fill=tk.X)
-        PastelButton(row, "🗂 Skills 文件夹", command=self.open_skills_folder,
+        PastelButton(row, "Skills 文件夹", command=self.open_skills_folder,
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
-        PastelButton(row, "📄 打开 config.json", command=lambda: self._cc_open_path(CONFIG_FILE),
+        PastelButton(row, "打开 config.json", command=lambda: self._cc_open_path(CONFIG_FILE),
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
-        PastelButton(row, "📁 打开程序目录", command=lambda: self._cc_open_path(SCRIPT_DIR),
+        PastelButton(row, "打开程序目录", command=lambda: self._cc_open_path(SCRIPT_DIR),
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT)
 
-        card = self._cc_card(body, title="会话维护", icon="🧹")
+        card = self._cc_card(body, title="会话维护")
         tk.Label(card, text="清空当前会话上下文（长期记忆档案仍保留），织织会忘掉本轮聊天、从头开始新话题。\n对话记录窗口里的「清空」按钮效果相同：一键清空记录与上下文，不会动长期记忆。",
                  font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff", justify="left",
                  wraplength=int(560 * dpi)).pack(anchor="w", pady=(0, int(8 * dpi)))
         row = tk.Frame(card, bg="#ffffff")
         row.pack(fill=tk.X)
-        PastelButton(row, "🧹 清空对话记忆", command=self.clear_memory, parent_bg="#ffffff",
+        PastelButton(row, "清空对话记忆", command=self.clear_memory, parent_bg="#ffffff",
                      fill=PAL["btn_danger"], fg=PAL["btn_danger_fg"],
                      hover=PAL["btn_danger_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT)
 
-        card = self._cc_card(body, title="电源", icon="⚡")
+        card = self._cc_card(body, title="电源")
         row = tk.Frame(card, bg="#ffffff")
         row.pack(fill=tk.X)
-        PastelButton(row, "🔄 重启桌宠", command=self.restart_pet, parent_bg="#ffffff",
+        PastelButton(row, "重启桌宠", command=self.restart_pet, parent_bg="#ffffff",
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
@@ -12206,15 +12301,15 @@ class DesktopPet:
                                    parent=self._cc_win):
                 self.quit_pet()
 
-        PastelButton(row, "❌ 退出桌宠", command=do_quit, parent_bg="#ffffff",
+        PastelButton(row, "退出桌宠", command=do_quit, parent_bg="#ffffff",
                      fill=PAL["btn_danger"], fg=PAL["btn_danger_fg"],
                      hover=PAL["btn_danger_hover"], font=self.f_ui,
                      padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
 
-        card = self._cc_card(body, title="关于", icon="ℹ️")
+        card = self._cc_card(body, title="关于")
         tk.Label(card, text=f"虹语织 NijiKori v{APP_VERSION} · Windows 原生桌面萌宠与 API 助手",
                  font=self.f_ui, fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
-        tk.Label(card, text=f"当前模型：{self.config.get('model') or '未设置（请在「🔌 接口与模型」页填写）'}"
+        tk.Label(card, text=f"当前模型：{self.config.get('model') or '未设置（请在「接口与模型」页填写）'}"
                             f"    接口：{self.config.get('base_url', DEFAULT_BASE_URL)}",
                  font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff").pack(anchor="w",
                                                                            pady=(int(4 * dpi), 0))

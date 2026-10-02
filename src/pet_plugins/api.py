@@ -163,16 +163,17 @@ class PluginAPI:
     # ------------------------------------------------------------------
     # 界面
     # ------------------------------------------------------------------
-    def add_menu_item(self, label, callback, *, icon="🧩", where="quick", order=50):
-        """往右键快捷菜单加一项。callback 接收 pet。"""
+    def add_menu_item(self, label, callback, *, icon="", where="quick", order=50):
+        """往右键快捷菜单加一项。callback 接收 pet；icon 保留兼容，界面只显示文字。"""
         return self._manager.add_menu_item(self, label, callback, icon=icon,
                                            where=where, order=order)
 
-    def add_control_center_page(self, title, builder, *, icon="🧩", key=None):
+    def add_control_center_page(self, title, builder, *, icon="", key=None):
         """在控制中心加一页。
 
         builder 签名为 ``builder(page_frame, api)``，在 page_frame 里自由摆放控件；
         可用 ``api.pet_ui()`` 拿到桌宠同款控件（卡片/滚动区/按钮/配色）。
+        icon 参数保留兼容；侧栏和页面标题只显示文字。
         """
         return self._manager.add_control_center_page(self, title, builder, icon=icon, key=key)
 

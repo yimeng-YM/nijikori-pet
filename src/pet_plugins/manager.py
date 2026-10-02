@@ -660,7 +660,7 @@ class PluginManager:
                              if not (p["plugin"] == api.name and p.get("key") == str(key))]
             return len(self._prompts) != before
 
-    def add_menu_item(self, api, label, callback, *, icon="🧩", where="quick", order=50):
+    def add_menu_item(self, api, label, callback, *, icon="", where="quick", order=50):
         if not callable(callback):
             raise PluginError("add_menu_item 的 callback 必须是可调用对象")
         with self._lock:
@@ -672,7 +672,7 @@ class PluginManager:
             self._menu.sort(key=lambda e: (e["order"], e["seq"]))
         return entry
 
-    def add_control_center_page(self, api, title, builder, *, icon="🧩", key=None):
+    def add_control_center_page(self, api, title, builder, *, icon="", key=None):
         if not callable(builder):
             raise PluginError("add_control_center_page 的 builder 必须是可调用对象")
         with self._lock:
@@ -680,7 +680,7 @@ class PluginManager:
             page_key = str(key or f"plugin:{api.name}")
             if page_key in BUILTIN_CC_PAGES:
                 raise PluginError(f"{page_key} 是内置页面；请用 modify_control_center_page()")
-            entry = {"plugin": api.name, "key": page_key, "icon": str(icon or "🧩"),
+            entry = {"plugin": api.name, "key": page_key, "icon": str(icon or ""),
                      "title": str(title or api.name), "builder": builder, "seq": self._seq}
             self._cc = [p for p in self._cc if p["key"] != page_key]
             self._cc.append(entry)
