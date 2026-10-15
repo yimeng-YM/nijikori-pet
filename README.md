@@ -418,9 +418,6 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 | v3.1 | 2026-09-25 | `NijiKori-pet-v3.1-win64.exe`<br>`NijiKori-pet-v3.1-source.zip` | 见 [v3.1 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1) |
 | v3.0 | 2026-09-23 | `NijiKori-pet-v3.0-win64.exe`（54.03 MiB）<br>`NijiKori-pet-v3.0-source.zip`（23.90 MiB） | `1317879c…ba2404`<br>`2899b1ec…bbd4ba` |
 
-> 注：GitHub 会清洗 Release 资产名中的非 ASCII 字符，因此产物使用 ASCII 文件名，
-> 程序内部名称与界面仍为中文（`虹语织-桌宠v3.3`）。
-
 ---
 
 <div align="center">
