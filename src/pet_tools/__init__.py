@@ -4,7 +4,6 @@
 以注册表方式向 main.py 提供代码编辑与增强工具：
 - fs.py      : glob_files / grep_files / edit_lines
 - shell.py   : start_background_command / read_background_output / stop_background_job
-- harness.py : delegate_to_harness
 
 所有 handler 签名: handler(args: dict, ctx) -> dict
 ctx 为桌宠主程序 DesktopPet 实例（提供 config / save_config /
@@ -74,4 +73,3 @@ def backup_file(file_path):
 # 子模块最后导入（它们依赖上面的 register / 助手）
 from pet_tools import fs as _fs          # noqa: E402,F401
 from pet_tools import shell as _shell    # noqa: E402,F401
-from pet_tools import harness as _harness  # noqa: E402,F401

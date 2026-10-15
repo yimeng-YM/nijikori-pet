@@ -2,7 +2,7 @@
 
 > 一个能陪你聊天、帮你干活、还会因为 API 余额告急而闹脾气的 Windows 桌面 AI 角色。
 
-![版本](https://img.shields.io/badge/version-3.2-blue)
+![版本](https://img.shields.io/badge/version-3.3-blue)
 ![平台](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB)
 ![许可证](https://img.shields.io/badge/license-未指定-orange)
@@ -11,7 +11,7 @@
 背后接一个大语言模型 —— 于是她不只会卖萌，还能记住你、操作你的电脑、帮你查资料写文件。
 
 *An open-source Windows desktop AI companion: layered-live2D-style character rendering, long-term
-memory, 39 native tools (files, shell, screen control, local web search) and a hot-reloadable
+memory, 38 native tools (files, shell, screen control, local web search) and a hot-reloadable
 Python plugin system. Chinese-first, Windows 10/11 x64.*
 
 ---
@@ -42,7 +42,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 | 🎭 **分层动态立绘** | 由 `默认.psd` 拆分出 **22 个图层**实时渲染：呼吸起伏、双马尾/呆毛摆动、随机眨眼、说话嘴型脉冲、视线跟随鼠标、镜像转身、走动时马尾物理惯性 |
 | 💬 **Galgame 式对话** | SSE 流式逐字输出，单句展示气泡窗口，支持最长 80 轮工具调用链（可调至 300） |
 | 🧠 **长期记忆与画像** | 对话中主动沉淀用户画像与印象记忆，每次对话自动注入，记忆档案可查看/编辑/重置 |
-| 🛠 **39 个原生工具** | 文件读写、批量文件操作、命令执行、屏幕与窗口感知、截图、桌面通知、音量、锁屏等 |
+| 🛠 **38 个原生工具** | 文件读写、批量文件操作、命令执行、屏幕与窗口感知、截图、桌面通知、音量、锁屏等 |
 | 🌐 **本地联网搜索** | 本机直连多个公开搜索引擎，**无需搜索模型或额外密钥**，带并发、超时、缓存与故障线路跳过 |
 | 👀 **屏幕/窗口感知** | 实时掌握显示器、DPI、所有窗口的标题/进程/边界/遮挡关系，支持自然语言"别挡住浏览器"式避让 |
 | 🖱️ **computer_use** | 直接操作软件界面：点击、拖动、滚动、输入、快捷键；每步自动回传快照，可串联多步动作 |
@@ -74,7 +74,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 - **运行 EXE**：无需安装 Python，单文件免安装
 - **源码运行**：Python **3.11**，依赖见 [`requirements.txt`](requirements.txt)（Pillow / pystray / beautifulsoup4）
 - **网络**：对话与搜索需要联网；模型侧需要一个 OpenAI 兼容的 API（Base URL + Key + 模型 ID）
-- **可选项**：识图（vision）、DeepSeek Harness 状态联动需要额外开启
+- **可选项**：识图（vision）需要额外开启
 
 ---
 
@@ -83,7 +83,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 ### 方式一：使用打包好的 EXE（推荐）
 
 1. 从 [最新 Release](https://github.com/yimeng-YM/nijikori-pet/releases/latest) 下载名称以 `-win64.exe` 结尾的文件
-   （下载后可自行改名为 `虹语织-桌宠v3.2.exe`，不影响运行）。
+   （下载后可自行改名为 `虹语织-桌宠v3.3.exe`，不影响运行）。
 2. 双击运行。首次运行若弹出 SmartScreen 提示，点「更多信息」→「仍要运行」。
 3. 右键桌宠 → 「控制中心」，在「API 与模型」页填入 **API Base URL / API Key / 模型名称**。
 
@@ -130,7 +130,7 @@ python -B src/main.py
 | --- | --- |
 | 概览 | 状态一览 + 快捷操作 + 行为开关速达 |
 | 外观与互动 | 尺寸滑杆（100~420px 实时生效）、自由漫步、悬浮呼吸感、视线跟随、窗口置顶、屏幕边框限制、命令确认、休眠与漫步节奏 |
-| API 与模型 | API 配置、本地搜索设置、工具轮次上限、电量阈值与巡检间隔、Harness 接口、识图开关 |
+| API 与模型 | API 配置、本地搜索设置、工具轮次上限、电量阈值与巡检间隔、识图开关 |
 | 定时任务 | 可视化增删改查定时任务，与对话中设定的任务实时同步 |
 | 工具能力 | 按分类查看全部 AI 工具，搜索过滤，开关即时生效 |
 | 插件扩展 | 插件开关、信任确认、加载状态与能力清单 |
@@ -160,7 +160,7 @@ python -B src/main.py
 
 她会计算屏幕空闲安全区并平滑小跑避让或就位（支持对侧/四角/边缘/指定坐标，3 档速度）。
 
-### 39 个原生工具（节选）
+### 38 个原生工具（节选）
 
 | 分类 | 工具 |
 | --- | --- |
@@ -199,13 +199,6 @@ python -B src/main.py
 标准 5 段 cron（`0 8 * * 1-5`）。到点除普通提醒外，还可自动打开网页、启动程序、打开文件、
 调音量、锁屏、截屏、发送通知；`custom` 类型到点由 AI 自主决策。循环任务支持 `repeat_count`
 次数上限与 `end_date` 截止日期。
-
-### DeepSeek Harness 状态联动（可选）
-
-桌宠可轮询本机 `dsh web` 的 `http://127.0.0.1:3080/api/dshpet/status`（默认每 2 秒）：
-有任务开工 → 切「思考中」并气泡提醒；任务完成 → 「递爱心」+ 弹跳 + 系统通知；出错 → 「疑惑」+ 摇头。
-该功能需要额外安装配套 dsh 插件（不在本仓库内），未安装时静默失效，不影响其他功能。
-也可通过 `delegate_to_harness` 工具把任务委托给 Harness 执行。
 
 ### 其他行为响应
 
@@ -262,7 +255,6 @@ python -B src/main.py
 | `computer-use` | 界面自动化操作规范 |
 | `web-access` | 浏览器/CDP 高级抓取与站点经验 |
 | `agent-reach` | 多平台内容调研与检索 |
-| `harness委托流程` | 向 DeepSeek Harness 委托任务 |
 
 她也可以通过 `manage_skills` 自主 `list` / `read` / `create` / `append` / `modify` / `delete` 技能 ——
 相处久了会自己攒下一套工作方法。控制中心「系统与关于」页可一键打开 Skills 文件夹手动编辑。
@@ -348,7 +340,7 @@ Nijikori pet/
 │   ├── layered_pet.py      # 分层立绘与动画
 │   ├── alpha_window.py     # 逐像素透明窗口
 │   ├── window_capture.py   # 窗口离屏截图
-│   ├── pet_tools/          # 文件、命令、Harness 等工具实现
+│   ├── pet_tools/          # 文件、命令等工具实现
 │   └── pet_plugins/        # 插件加载器与信任机制
 ├── resources/              # 静态资源
 │   ├── assets/             # 立绘、气泡、图标、layered/ 分层动画
@@ -367,9 +359,9 @@ Nijikori pet/
 
 | 文件 | 说明 |
 | --- | --- |
-| `NijiKori-pet-v3.2-win64.exe` | Windows 免安装单文件版 |
-| `NijiKori-pet-v3.2-source.zip` | 源码版，运行需 Python 3.11 |
-| `NijiKori-pet-v3.2-SHA256SUMS.txt` | 下载文件的 SHA-256 校验值 |
+| `NijiKori-pet-v3.3-win64.exe` | Windows 免安装单文件版 |
+| `NijiKori-pet-v3.3-source.zip` | 源码版，运行需 Python 3.11 |
+| `NijiKori-pet-v3.3-SHA256SUMS.txt` | 下载文件的 SHA-256 校验值 |
 
 源码运行步骤见 [快速开始](#快速开始)。
 
@@ -391,9 +383,6 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 请按「先看再点」流程：先 `focus`/`observe` 拿快照，用快照返回的图片像素坐标操作。
 窗口移动或缩放后需要重新观察。
 
-**Harness 状态不显示？**
-需配合配套 dsh 插件（不在本仓库内），并确认本机 `dsh web` 在 3080 端口运行；
-浏览器访问 `http://127.0.0.1:3080/api/dshpet/status` 应返回 JSON。
 
 **桌面被扫地动画卡顿？**
 该动画为定位原文件位置会短暂读取桌面图标。可在 `config.json` 设
@@ -410,7 +399,6 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 - 仅支持 **Windows 10/11 x64**（依赖 Win32 分层窗口、DPI 与托盘 API）。
 - 立绘与素材版权归原作者，请勿商用（见下）。
 - 识图与 computer_use 依赖所用模型的多模态能力，需手动开启，且效果与模型自身能力强相关。
-- DeepSeek Harness 联动需要额外安装配套插件。
 
 ---
 
@@ -425,17 +413,18 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 | 版本 | 日期 | 产物 | SHA-256 |
 | --- | --- | --- | --- |
+| v3.3 | 2026-10-15 | `NijiKori-pet-v3.3-win64.exe`<br>`NijiKori-pet-v3.3-source.zip` | 见 [v3.3 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.3) |
 | v3.2 | 2026-10-02 | `NijiKori-pet-v3.2-win64.exe`<br>`NijiKori-pet-v3.2-source.zip` | 见 [v3.2 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.2) |
 | v3.1 | 2026-09-25 | `NijiKori-pet-v3.1-win64.exe`<br>`NijiKori-pet-v3.1-source.zip` | 见 [v3.1 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1) |
 | v3.0 | 2026-09-23 | `NijiKori-pet-v3.0-win64.exe`（54.03 MiB）<br>`NijiKori-pet-v3.0-source.zip`（23.90 MiB） | `1317879c…ba2404`<br>`2899b1ec…bbd4ba` |
 
 > 注：GitHub 会清洗 Release 资产名中的非 ASCII 字符，因此产物使用 ASCII 文件名，
-> 程序内部名称与界面仍为中文（`虹语织-桌宠v3.2`）。
+> 程序内部名称与界面仍为中文（`虹语织-桌宠v3.3`）。
 
 ---
 
 <div align="center">
 
-**虹语织 NijiKori v3.2** · Windows 原生桌面萌宠与 API 助手
+**虹语织 NijiKori v3.3** · Windows 原生桌面萌宠与 API 助手
 
 </div>

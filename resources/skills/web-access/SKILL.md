@@ -32,7 +32,6 @@ metadata:
 > - **执行确认框**：桌宠的 `run_command`/`run_command_capture` 默认会弹窗请主人确认（Confirm Before Command）。做连续自动化前请让主人在配置里关闭该确认，否则每次命令都要点一次。
 > - **WebFetch/WebSearch 替代**：本 skill 正文提到 WebFetch/WebSearch，桌宠没有同名工具。轻量搜索直接用桌宠自带 `web_search`；抓取已知 URL 的文本用 `curl.exe` + `run_command_capture`；需要登录态或动态内容再走 CDP。
 > - **平台风险**：浏览器自动化操作社交平台（小红书/微博/公众号）有账号限流/封禁风险，正文要求用小号并已内置防护，继续操作即视为接受。
-> - **子 Agent 并行**：本 skill 的「分治子 Agent」在桌宠里没有对应子 Agent 机制（只有 `delegate_to_harness`，跑 dsh）。请改为**串行**处理多目标，或在对话里明确分批。
 
 ## 前置检查
 

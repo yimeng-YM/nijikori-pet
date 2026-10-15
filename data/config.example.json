@@ -21,14 +21,9 @@
   "always_on_top": true,
   "enable_screen_edge_limit": true,
   "vision_supported": false,
-  "harness_dsh_path": "",
   "chat_size": {
     "w": 756,
     "h": 359
   },
-  "reminders": [],
-  "enable_harness_monitor": true,
-  "harness_monitor_source": "sessions",
-  "harness_sessions_dir": "~/.dsh/sessions",
-  "harness_status_url": "http://127.0.0.1:3080/api/dshpet/status"
+  "reminders": []
 }

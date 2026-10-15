@@ -23,4 +23,3 @@ triggers:
 
 ## 纪律
 - 动手改之前先走完 1-4 步；
-- 大型改造任务优先委托 delegate_to_harness。

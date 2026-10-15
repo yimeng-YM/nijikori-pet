@@ -223,7 +223,7 @@ class PluginAPI:
         pet = self.get_pet()
         if pet is None:
             return None
-        return pet._tk_call(function, *args, **kwargs)
+        return pet._tk_call(lambda: function(*args, **kwargs))
 
     def show_speech(self, text, emotion="默认", duration=3000):
         """让桌宠说一句话（气泡）。"""
@@ -232,6 +232,26 @@ class PluginAPI:
             return False
         self.call_on_ui(pet.show_speech, str(text), emotion, int(duration))
         return True
+
+    def send_chat_message(self, text, *, context="", reply_target="pet", callback=None):
+        """把消息交给原生对话流程；callback({status, text}) 接收本轮终态。
+
+        reply_target=external 时由插件显示回复；pet 时沿用桌宠气泡与对话框。
+        人设、记忆、技能、工具、取消和新消息打断都由宿主管理。
+        """
+        if reply_target not in ("pet", "external"):
+            raise ValueError("reply_target 必须为 pet 或 external")
+        if not isinstance(text, str) or not text.strip() or len(text) > 8000:
+            raise ValueError("消息长度必须为 1~8000 字符")
+        pet = self.get_pet()
+        if pet is None:
+            raise RuntimeError("桌宠尚未就绪")
+        self.call_on_ui(pet.submit_chat_message, text, context=str(context)[:6000],
+                        reply_target=reply_target, callback=callback)
+
+    def set_working(self, busy):
+        """汇报本插件的后台工作状态，供宿主动画/待机逻辑使用；卸载自动清除。"""
+        self._manager.set_working(self.name, bool(busy))
 
     def set_emotion(self, name):
         """切换桌宠表情。"""

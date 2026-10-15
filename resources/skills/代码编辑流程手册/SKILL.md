@@ -31,4 +31,4 @@ triggers:
 ## 纪律
 - 改之前一定先读原文，禁止凭想象改；
 - 一次对话里连续小步改，别一口气重写整个文件；
-- 改坏了不怕：每次编辑自动备份（%TEMP%/nijikori_backups），大任务可委托 `delegate_to_harness`。
+- 改坏了不怕：每次编辑自动备份（%TEMP%/nijikori_backups）。

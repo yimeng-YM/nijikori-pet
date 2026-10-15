@@ -146,6 +146,21 @@ class PluginManager:
         self._baseline = None
         self._log_path = ""
         self._builtin_tools = set()
+        self._working = set()
+
+    def set_working(self, plugin_name, busy):
+        with self._lock:
+            if busy:
+                self._working.add(plugin_name)
+            else:
+                self._working.discard(plugin_name)
+        pet = self.host.pet if self.host else None
+        if pet is not None:
+            pet._tk_call(pet._sync_chat_action)
+
+    def is_working(self):
+        with self._lock:
+            return bool(self._working)
 
     # ==================================================================
     # 挂载
@@ -774,6 +789,7 @@ class PluginManager:
 
     def _unregister(self, plugin_name):
         """回滚某个插件的全部注册（加载失败 / 卸载 / 重载时调用）。"""
+        self.set_working(plugin_name, False)
         with self._lock:
             tools_list = self.host.tools_list if self.host else None
             for name in [n for n, e in self._tools.items() if e["plugin"] == plugin_name]:

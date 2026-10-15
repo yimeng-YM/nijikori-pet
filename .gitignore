@@ -12,6 +12,7 @@ data/*
 /tests/
 /tools/
 /docs/
+/integrations/minecraft/src/verification/
 # 开发工具的本机状态和配置
 /.kilo/
 /.codex/

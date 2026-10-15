@@ -12,8 +12,7 @@ def validate_config(data):
     if not isinstance(data, dict):
         raise ConfigError('配置必须是 JSON 对象')
     strings = ('base_url', 'api_key', 'model', 'system_prompt',
-               'current_emotion', 'harness_dsh_path', 'harness_status_url',
-               'harness_sessions_dir', 'harness_monitor_source')
+               'current_emotion')
     for key in strings:
         if key in data and not isinstance(data[key], str):
             raise ConfigError(f'{key} 必须是文本')
@@ -24,8 +23,7 @@ def validate_config(data):
             if not isinstance(value, bool):
                 raise ConfigError(f'{key} 必须是 true 或 false')
     for key in ('pet_size', 'pet_fps', 'x', 'y', 'max_tool_rounds', 'low_balance_threshold',
-                'balance_check_interval_mins', 'sleep_timeout_mins', 'wander_interval_secs',
-                'harness_poll_interval_secs'):
+                'balance_check_interval_mins', 'sleep_timeout_mins', 'wander_interval_secs'):
         if key not in data:
             continue
         value = data[key]
