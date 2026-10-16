@@ -43,6 +43,13 @@ from pet_snapshot import SCHEMA as SNAPSHOT_SCHEMA, capture_snapshot
 from pet_chat_input import ChatComposer, ChatIconButton
 from pet_chat_render import ChatBubbleRenderer
 from pet_chat_history import ChatHistoryWindow
+from pet_ui_kit import (PAL, PastelButton, ToggleSwitch, SideNavItem,
+                        ScrollableNavigation, PastelSlider, RoundedFrame,
+                        rounded_entry, rounded_combobox, rounded_text,
+                        Badge, HelpButton, show_help_popup,
+                        SmoothScroll, apply_scroll_styles, apply_combobox_style,
+                        style_secondary_window, round_rect_photo,
+                        icon_family, gradient_photo, style_titlebar, ease_out)
 import ctypes
 import threading
 from datetime import datetime, timedelta
@@ -135,7 +142,7 @@ DEFAULT_BASE_URL = "https://api.kourichat.com/v1"
 DEFAULT_API_KEY = ""  # never hardcoded; the key is read from config.json only
 # 不预置任何示例模型名：出厂 model 为空，用户按自己所用供应商的模型 ID 填写。
 DEFAULT_MODEL = ""
-APP_VERSION = "3.3"
+APP_VERSION = "3.3.2"
 
 # ---------------------------------------------------------------------------
 # Inbound request-header rule:
@@ -1044,37 +1051,11 @@ def file_operations(operations, approved_overwrites=None):
 
 def ask_command_confirmation(cmd, description="", title="安全确认", prompt="织织准备执行以下指令：",
                              parent=None, dpi=1.0):
-    """Show a scrollable, bounded command confirmation dialog.
-
-    Replaces the native messagebox which can become too large / unreachable
-    when the command text is extremely long.  The dialog always keeps the
-    confirm/reject buttons visible and also supports closing via the X button.
-    """
+    """Show a scrollable, bounded command confirmation dialog."""
     result = {"ok": False}
     win = tk.Toplevel(parent)
-    win.title(title)
-    win.configure(bg=PAL["bg"])
-    try:
-        win.attributes("-topmost", True)
-    except Exception:
-        pass
-    try:
-        if parent is not None:
-            win.transient(parent)
-    except Exception:
-        pass
-
-    # Keep the dialog bounded to the screen; buttons are always on screen.
-    try:
-        sw = win.winfo_screenwidth()
-        sh = win.winfo_screenheight()
-        w = min(int(680 * dpi), max(400, sw - 80))
-        h = min(int(460 * dpi), max(320, sh - 80))
-        x = max(0, (sw - w) // 2)
-        y = max(0, (sh - h) // 2)
-        win.geometry(f"{w}x{h}+{x}+{y}")
-    except Exception:
-        win.geometry("640x440")
+    style_secondary_window(win, title=title, width=int(680 * dpi), height=int(480 * dpi),
+                           dpi=dpi, parent=parent, topmost=True)
 
     def finish(ok):
         result["ok"] = ok
@@ -1094,54 +1075,50 @@ def ask_command_confirmation(cmd, description="", title="安全确认", prompt="
         finish(False)
 
     win.protocol("WM_DELETE_WINDOW", do_cancel)
+    f_h = tkfont.Font(root=win, family="Microsoft YaHei UI", size=12, weight="bold")
+    f_ui = tkfont.Font(root=win, family="Microsoft YaHei UI", size=10)
+    f_ui_b = tkfont.Font(root=win, family="Microsoft YaHei UI", size=10, weight="bold")
+    f_sm = tkfont.Font(root=win, family="Microsoft YaHei UI", size=9)
+    f_code = tkfont.Font(root=win, family="Consolas", size=10)
 
-    # Prompt
-    tk.Label(win, text=prompt, font=("Microsoft YaHei UI", 11, "bold"),
-             fg=PAL["ink"], bg=PAL["bg"], wraplength=int(620 * dpi),
-             justify="left").pack(anchor="w", padx=int(16 * dpi),
-                                  pady=(int(14 * dpi), int(4 * dpi)))
+    # Pin footer buttons at bottom first
+    btn_frame = tk.Frame(win, bg=PAL["bg"])
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=int(24 * dpi), pady=(int(6 * dpi), int(16 * dpi)))
+    PastelButton(btn_frame, "确认执行", command=do_confirm, parent_bg=PAL["bg"],
+                 fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
+                 hover=PAL["btn_primary_hover"], font=f_ui_b,
+                 padx=int(18 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT)
+    PastelButton(btn_frame, "拒绝", command=do_cancel, parent_bg=PAL["bg"],
+                 fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
+                 hover=PAL["btn_soft_hover"], font=f_ui,
+                 padx=int(16 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT, padx=(0, int(10 * dpi)))
+
+    card = RoundedFrame(win, radius=int(10 * dpi), fill="#ffffff", border=PAL["line_soft"])
+    card.pack(fill=tk.BOTH, expand=True, padx=int(24 * dpi), pady=(int(18 * dpi), int(6 * dpi)))
+    inner = tk.Frame(card.body, bg="#ffffff")
+    inner.pack(fill=tk.BOTH, expand=True, padx=int(20 * dpi), pady=int(16 * dpi))
+
+    head_row = tk.Frame(inner, bg="#ffffff")
+    head_row.pack(fill=tk.X, pady=(0, int(6 * dpi)))
+    tk.Label(head_row, text=prompt, font=f_h, fg=PAL["ink"], bg="#ffffff",
+             wraplength=int(500 * dpi), justify="left").pack(side=tk.LEFT)
+    Badge(head_row, "命令确认", kind="warn", parent_bg="#ffffff",
+          font=f_sm).pack(side=tk.RIGHT)
+
     if description:
-        tk.Label(win, text=f"指令作用：{description}", font=("Microsoft YaHei UI", 10, "bold"),
-                 fg=PAL["peri"], bg=PAL["bg"], wraplength=int(620 * dpi),
-                 justify="left").pack(anchor="w", padx=int(16 * dpi),
-                                      pady=(0, int(4 * dpi)))
-    tk.Label(win, text="（命令较长时可滚动查看）", font=("Microsoft YaHei UI", 9),
-             fg=PAL["ink_dim"], bg=PAL["bg"]).pack(anchor="w",
-                                                    padx=int(16 * dpi))
-    tk.Label(win, text="执行指令：", font=("Microsoft YaHei UI", 10, "bold"),
-             fg=PAL["ink"], bg=PAL["bg"]).pack(anchor="w", padx=int(16 * dpi),
-                                               pady=(int(2 * dpi), 0))
+        tk.Label(inner, text=f"指令作用：{description}", font=f_ui_b,
+                 fg=PAL["peri_deep"], bg="#ffffff", wraplength=int(580 * dpi),
+                 justify="left").pack(anchor="w", pady=(0, int(6 * dpi)))
 
-    # Scrollable command body
-    body_frame = tk.Frame(win, bg=PAL["bg"])
-    body_frame.pack(fill="both", expand=True, padx=int(16 * dpi),
-                    pady=(int(6 * dpi), int(8 * dpi)))
-    txt = tk.Text(body_frame, wrap="word", height=12, width=72,
-                  bg="#ffffff", fg=PAL["ink"], insertbackground=PAL["peri"],
-                  relief=tk.FLAT, highlightthickness=1,
-                  highlightbackground=PAL["line"], highlightcolor=PAL["cyan"],
-                  font=("Consolas", 10))
-    scroll = tk.Scrollbar(body_frame, orient="vertical", command=txt.yview)
-    txt.configure(yscrollcommand=scroll.set)
-    txt.pack(side="left", fill="both", expand=True)
-    scroll.pack(side="right", fill="y")
+    tk.Label(inner, text="待执行指令（可滚动查看）：", font=f_sm,
+             fg=PAL["ink_dim"], bg="#ffffff").pack(anchor="w", pady=(0, int(4 * dpi)))
+
+    txt = rounded_text(inner, font=f_code, height=10, dpi=dpi, fill=PAL["panel"])
+    txt.box.pack(fill=tk.BOTH, expand=True)
     txt.insert("1.0", cmd)
     txt.configure(state="disabled")
 
-    # Buttons (always visible at the bottom)
-    btn_frame = tk.Frame(win, bg=PAL["bg"])
-    btn_frame.pack(fill="x", padx=int(16 * dpi), pady=(0, int(14 * dpi)))
-    tk.Button(btn_frame, text="拒绝", command=do_cancel,
-              bg=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
-              activebackground=PAL["btn_soft_hover"], relief=tk.FLAT,
-              font=("Microsoft YaHei UI", 11), padx=int(20 * dpi),
-              pady=int(6 * dpi)).pack(side="right", padx=(int(8 * dpi), 0))
-    tk.Button(btn_frame, text="确认执行", command=do_confirm,
-              bg=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
-              activebackground=PAL["btn_primary_hover"], relief=tk.FLAT,
-              font=("Microsoft YaHei UI", 11, "bold"), padx=int(20 * dpi),
-              pady=int(6 * dpi)).pack(side="right")
-
+    win.bind("<Escape>", lambda _e: do_cancel())
     try:
         win.grab_set()
         win.focus_set()
@@ -1157,52 +1134,6 @@ def ask_command_confirmation(cmd, description="", title="安全确认", prompt="
 # (soft white-lavender interior, periwinkle outlines, cyan & gold accents)
 # ---------------------------------------------------------------------------
 MAGIC_COLOR = "#010101"  # chroma-key transparency color (Windows layered windows)
-PAL = {
-    "bg":          "#f8f9fe",  # dialog background (soft white-lavender)
-    "panel":       "#f6f8fe",  # panels / footer card
-    "panel2":      "#eef2fc",
-    "interior":    "#fbfcfe",  # solid color matching bubble inner area
-    "ink":         "#3f4a6b",  # primary text (dark slate-indigo, ~8:1 on bg)
-    "ink_soft":    "#5a6490",  # secondary text
-    "ink_dim":     "#8a93ad",  # tertiary text
-    "peri":        "#6a74b8",  # periwinkle accent (titles)
-    "peri_deep":   "#55619f",
-    "line":        "#c9d2f0",  # borders
-    "line_soft":   "#dee4f6",
-    "user":        "#2f79c3",  # user name (readable blue)
-    "bot":         "#2e9e82",  # pet name (readable teal)
-    "sys":         "#8a93ad",
-    "tool":        "#7a5fd0",
-    "cyan":        "#58bfe0",
-    "gold":        "#e8b64a",
-    "btn_primary":       "#aedcf2",
-    "btn_primary_fg":    "#2f5671",
-    "btn_primary_hover": "#9cd2ec",
-    "btn_soft":          "#e7ecfa",
-    "btn_soft_fg":       "#5a64a0",
-    "btn_soft_hover":    "#d9e2f7",
-    "btn_danger":        "#f3cdd9",
-    "btn_danger_fg":     "#8f3b5c",
-    "btn_danger_hover":  "#ecc0cf",
-    "menu_active":       "#e4eafa",
-    "scroll_trough":     "#eef2fc",
-    "scroll_thumb":      "#c3cdef",
-    # --- Conversation-history window (see pet_chat_history.py) -------------
-    # Bubble / card surfaces are tinted per speaker; every text color below
-    # holds >= 4.5:1 contrast against the surface it sits on.
-    "hist_surface":      "#ffffff",  # transcript canvas
-    "hist_user_bubble":  "#dfeafc",
-    "hist_user_text":    "#22405f",
-    "hist_pet_bubble":   "#e4f6ef",
-    "hist_pet_text":     "#1f4a3d",
-    "hist_tool_card":    "#f2eefc",
-    "hist_tool_text":    "#5b3fa8",
-    "hist_tool_line":    "#6b5aa8",
-    "hist_sys_pill":     "#eef1f8",
-    "hist_sys_text":     "#5f6884",
-    "hist_avatar_pet":   "#5cc4a5",
-    "hist_avatar_user":  "#7aa9df",
-}
 
 def get_dpi_scale():
     """Return physical/logical scale factor so windows stay crisp & sized on HiDPI."""
@@ -1241,303 +1172,6 @@ def rounded_rect(canvas, x0, y0, x1, y1, r, **kw):
     pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,
            x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
     return canvas.create_polygon(pts, smooth=True, **kw)
-
-class PastelButton(tk.Canvas):
-    """Canvas-based rounded pastel button with hover state."""
-
-    def __init__(self, master, text, command=None, parent_bg=PAL["panel"],
-                 fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
-                 hover=None, font=None, padx=16, pady=7, radius=14):
-        self._fill = fill
-        self._hover = hover or fill
-        self._fg = fg
-        self._cmd = command
-        self._padx = padx
-        self._pady = pady
-        self._r = radius
-        font = font or tkfont.nametofont("TkDefaultFont")
-        w = font.measure(text) + padx * 2
-        h = font.metrics("linespace") + pady * 2
-        super().__init__(master, width=w, height=h, bg=parent_bg,
-                         highlightthickness=0, bd=0, cursor="hand2")
-        rounded_rect(self, 1, 1, w - 1, h - 1, radius,
-                     fill=fill, outline="", width=0, tags=("paint",))
-        self.create_text(w // 2, h // 2, text=text, font=font, fill=fg)
-        self.bind("<Enter>", lambda e: self._paint(self._hover))
-        self.bind("<Leave>", lambda e: self._paint(self._fill))
-        self.bind("<ButtonPress-1>", lambda e: self._paint(self._hover))
-        self.bind("<ButtonRelease-1>", self._release)
-
-    def _paint(self, fill):
-        self.delete("paint")
-        self._paint_rect = rounded_rect(self, 1, 1, self.winfo_reqwidth() - 1,
-                                        self.winfo_reqheight() - 1, self._r,
-                                        fill=fill, outline="", width=0,
-                                        tags=("paint",))
-        self.tag_lower("paint")
-
-    def _release(self, event):
-        self._paint(self._fill)
-        if self._cmd:
-            self._cmd()
-
-def _lerp_color(c1, c2, t):
-    """Linear-interpolate two hex colors (t in 0..1) for smooth transitions."""
-    t = max(0.0, min(1.0, t))
-
-    def _rgb(c):
-        c = c.lstrip("#")
-        return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
-
-    a, b = _rgb(c1), _rgb(c2)
-    mix = tuple(int(round(a[i] + (b[i] - a[i]) * t)) for i in range(3))
-    return "#{:02x}{:02x}{:02x}".format(*mix)
-
-
-class ToggleSwitch(tk.Canvas):
-    """Modern animated pill toggle switch (iOS style) drawn on a canvas.
-
-    Click flips the state with a short knob-slide + color-fade animation,
-    then invokes command(new_state: bool).
-    """
-
-    def __init__(self, master, command=None, initial=False,
-                 on_color="#7b87d9", off_color="#d3daf0", bg="#ffffff",
-                 width=44, height=24):
-        self._on = bool(initial)
-        self._t = 1.0 if self._on else 0.0
-        self._cmd = command
-        self._on_c = on_color
-        self._off_c = off_color
-        self._cv_w = int(width)
-        self._cv_h = int(height)
-        self._anim_after = None
-        super().__init__(master, width=self._cv_w, height=self._cv_h, bg=bg,
-                         highlightthickness=0, bd=0, cursor="hand2")
-        self.bind("<Button-1>", self._on_click)
-        self._paint()
-
-    def is_on(self):
-        return self._on
-
-    def set_state(self, value, animate=True):
-        value = bool(value)
-        if self._on == value:
-            self._t = 1.0 if value else 0.0
-            self._paint()
-            return
-        self._on = value
-        target = 1.0 if value else 0.0
-        if self._anim_after is not None:
-            try:
-                self.after_cancel(self._anim_after)
-            except Exception:
-                pass
-            self._anim_after = None
-        if not animate:
-            self._t = target
-            self._paint()
-            return
-        start = self._t
-        steps = 6
-        state = {"i": 0}
-
-        def _step():
-            state["i"] += 1
-            self._t = start + (target - start) * state["i"] / steps
-            self._paint()
-            if state["i"] < steps:
-                self._anim_after = self.after(18, _step)
-            else:
-                self._anim_after = None
-
-        _step()
-
-    def _on_click(self, _event=None):
-        self.set_state(not self._on)
-        if self._cmd:
-            try:
-                self._cmd(self._on)
-            except Exception as e:
-                print(f"[toggle] command failed: {e}")
-
-    def _paint(self):
-        self.delete("all")
-        col = _lerp_color(self._off_c, self._on_c, self._t)
-        rounded_rect(self, 1, 1, self._cv_w - 1, self._cv_h - 1,
-                     max(4, (self._cv_h - 2) // 2), fill=col, outline="", width=0)
-        pad = 4
-        r = max(5, (self._cv_h - 2 * pad) / 2.0)
-        x0 = pad + r
-        x1 = self._cv_w - pad - r
-        x = x0 + (x1 - x0) * self._t
-        y = self._cv_h / 2.0
-        self.create_oval(x - r, y - r, x + r, y + r, fill="#ffffff",
-                         outline="#c8cfec", width=1)
-
-
-class SideNavItem(tk.Canvas):
-    """Text sidebar navigation pill with hover & selected states."""
-
-    def __init__(self, master, icon, text, command, width=196, height=40,
-                 bg=PAL["panel2"], font=None):
-        self._text = text
-        self._cmd = command
-        self._cv_w = int(width)
-        self._cv_h = int(height)
-        self._bg = bg
-        self._sel = False
-        self._hover = False
-        self._font = font or tkfont.nametofont("TkDefaultFont")
-        super().__init__(master, width=self._cv_w, height=self._cv_h, bg=bg,
-                         highlightthickness=0, bd=0, cursor="hand2")
-        self.bind("<Button-1>", lambda e: self._cmd())
-        self.bind("<Enter>", lambda e: self._set_hover(True))
-        self.bind("<Leave>", lambda e: self._set_hover(False))
-        self._paint()
-
-    def set_selected(self, selected):
-        self._sel = bool(selected)
-        self._paint()
-
-    def _set_hover(self, on):
-        self._hover = bool(on)
-        self._paint()
-
-    def _paint(self):
-        self.delete("all")
-        if self._sel:
-            rounded_rect(self, 2, 2, self._cv_w - 2, self._cv_h - 2, 12,
-                         fill="#ffffff", outline=PAL["line_soft"], width=1)
-            rounded_rect(self, 2, self._cv_h / 2 - 10, 7, self._cv_h / 2 + 10, 3,
-                         fill=PAL["peri"], outline="", width=0)
-            fg = PAL["peri_deep"]
-        elif self._hover:
-            rounded_rect(self, 2, 2, self._cv_w - 2, self._cv_h - 2, 12,
-                         fill="#dde4f8", outline="", width=0)
-            fg = PAL["ink"]
-        else:
-            fg = PAL["ink_soft"]
-        self.create_text(self._cv_w / 2, self._cv_h / 2,
-                         text=self._text,
-                         font=self._font, fill=fg)
-
-
-class PastelSlider(tk.Canvas):
-    """Modern rounded slider: lavender track with periwinkle progress fill and
-    a white knob. Supports drag, click-to-jump and mouse-wheel adjustment
-    (wheel events are consumed so the page does not scroll while sliding)."""
-
-    def __init__(self, master, from_=0, to=100, value=0, step=1,
-                 command=None, on_release=None, bg="#ffffff",
-                 width=300, height=28):
-        self._lo = float(from_)
-        self._hi = float(to)
-        self._step = max(0.001, float(step))
-        self._val = float(value)
-        self._cmd = command
-        self._rel = on_release
-        self._sw = int(width)
-        self._sh = int(height)
-        self._hover = False
-        self._dragging = False
-        self._wheel_after = None
-        super().__init__(master, width=self._sw, height=self._sh, bg=bg,
-                         highlightthickness=0, bd=0, cursor="hand2")
-        self.bind("<ButtonPress-1>", self._on_press)
-        self.bind("<B1-Motion>", self._on_drag)
-        self.bind("<ButtonRelease-1>", self._on_release)
-        self.bind("<MouseWheel>", self._on_wheel)
-        self.bind("<Enter>", lambda e: self._set_hover(True))
-        self.bind("<Leave>", lambda e: self._set_hover(False))
-        self._paint()
-
-    def _x0(self):
-        return 14.0
-
-    def _x1(self):
-        return self._sw - 14.0
-
-    def _snap(self, v):
-        v = max(self._lo, min(self._hi, v))
-        v = self._lo + round((v - self._lo) / self._step) * self._step
-        return max(self._lo, min(self._hi, v))
-
-    def _x_for(self, val):
-        ratio = (val - self._lo) / max(0.001, self._hi - self._lo)
-        return self._x0() + (self._x1() - self._x0()) * ratio
-
-    def _val_for(self, x):
-        ratio = (x - self._x0()) / max(0.001, self._x1() - self._x0())
-        ratio = max(0.0, min(1.0, ratio))
-        return self._snap(self._lo + ratio * (self._hi - self._lo))
-
-    def get_value(self):
-        return int(round(self._val))
-
-    def set_value(self, v, fire=True):
-        self._val = self._snap(float(v))
-        self._paint()
-        if fire and self._cmd:
-            self._cmd(int(round(self._val)))
-
-    def _apply_x(self, x):
-        self._val = self._val_for(x)
-        self._paint()
-        if self._cmd:
-            self._cmd(int(round(self._val)))
-
-    def _fire_release(self):
-        self._wheel_after = None
-        if self._rel:
-            self._rel(int(round(self._val)))
-
-    def _on_press(self, e):
-        self._dragging = True
-        self._apply_x(e.x)
-
-    def _on_drag(self, e):
-        self._apply_x(e.x)
-
-    def _on_release(self, e):
-        self._dragging = False
-        self._apply_x(e.x)
-        if self._rel:
-            self._rel(int(round(self._val)))
-
-    def _on_wheel(self, e):
-        delta = 1 if e.delta > 0 else -1
-        self.set_value(self._val + delta * self._step)
-        if self._rel:
-            # debounce: apply once shortly after the last wheel tick
-            if self._wheel_after is not None:
-                try:
-                    self.after_cancel(self._wheel_after)
-                except Exception:
-                    pass
-            self._wheel_after = self.after(350, self._fire_release)
-        return "break"  # keep the page from scrolling while adjusting
-
-    def _set_hover(self, on):
-        self._hover = bool(on)
-        self._paint()
-
-    def _paint(self):
-        self.delete("all")
-        y = self._sh / 2.0
-        track_h = max(5.0, self._sh * 0.26)
-        r = track_h / 2.0
-        x0, x1 = self._x0(), self._x1()
-        x = self._x_for(self._val)
-        rounded_rect(self, x0, y - r, x1, y + r, r, fill="#e2e7f8",
-                     outline="", width=0)
-        if x > x0 + r:
-            rounded_rect(self, x0, y - r, x, y + r, r, fill="#7b87d9",
-                         outline="", width=0)
-        kr = (self._sh * 0.36) + (1.5 if (self._hover or self._dragging) else 0)
-        self.create_oval(x - kr, y - kr, x + kr, y + kr, fill="#ffffff",
-                         outline="#7b87d9", width=2)
-
 
 class QuickMenu(tk.Toplevel):
     """Modern rounded quick-action popup shown when right-clicking the pet.
@@ -1601,6 +1235,9 @@ class QuickMenu(tk.Toplevel):
         cy = pad
         x0 = int(8 * dpi)
         x1 = width - int(10 * dpi)
+        pill_w = x1 - x0
+        self._pill_on = round_rect_photo(pill_w, row_h, int(9 * dpi), PAL["menu_active"])
+        self._pill_off = round_rect_photo(pill_w, row_h, int(9 * dpi), "#ffffff")
         for it in items:
             if it is None:
                 cv.create_line(x0 + int(6 * dpi), cy + sep_h // 2,
@@ -1610,18 +1247,21 @@ class QuickMenu(tk.Toplevel):
                 continue
             label, cmd = it
             tag = f"row{cy}"
-            bg_id = rounded_rect(cv, x0, cy, x1, cy + row_h, int(10 * dpi),
-                                 fill="#ffffff", outline="", width=0,
-                                 tags=(tag,))
-            cv.create_text(x0 + int(18 * dpi), cy + row_h // 2, text=label,
-                           anchor="w", font=pet.f_ui, fill=PAL["ink"],
-                           tags=(tag,))
+            bg_id = cv.create_image(x0, cy, image=self._pill_off, anchor="nw", tags=(tag,))
+            fg_col = PAL["btn_danger_fg"] if label == "退出桌宠" else PAL["ink"]
+            txt_id = cv.create_text(x0 + int(16 * dpi), cy + row_h // 2, text=label,
+                                    anchor="w", font=pet.f_ui, fill=fg_col,
+                                    tags=(tag,))
 
-            def _enter(_e, bid=bg_id):
-                cv.itemconfig(bid, fill=PAL["menu_active"])
+            def _enter(_e, bid=bg_id, tid=txt_id, is_quit=(label == "退出桌宠")):
+                cv.itemconfig(bid, image=self._pill_on)
+                if not is_quit:
+                    cv.itemconfig(tid, fill=PAL["peri_deep"])
 
-            def _leave(_e, bid=bg_id):
-                cv.itemconfig(bid, fill="#ffffff")
+            def _leave(_e, bid=bg_id, tid=txt_id, is_quit=(label == "退出桌宠")):
+                cv.itemconfig(bid, image=self._pill_off)
+                if not is_quit:
+                    cv.itemconfig(tid, fill=PAL["ink"])
 
             def _click(_e, c=cmd):
                 self._dismiss()
@@ -2611,18 +2251,38 @@ def _plugin_ui_kit():
         "scrollable": pet._cc_scrollable,
         "toggle_row": pet._cc_toggle_row,
         "field": pet._cc_field,
+        "entry_value": pet._cc_entry_value,
+        "combo": pet._cc_combo,
+        "text_box": pet._cc_text,
         "open_path": pet._cc_open_path,
         "button": PastelButton,
         "toggle": ToggleSwitch,
+        "slider": PastelSlider,
+        "badge": Badge,
+        "help_button": HelpButton,
+        "show_help": show_help_popup,
+        "rounded_frame": RoundedFrame,
+        "rounded_entry": rounded_entry,
+        "rounded_combobox": rounded_combobox,
+        "rounded_text": rounded_text,
+        "secondary_window": style_secondary_window,
+        "style_titlebar": style_titlebar,
+        "apply_scroll_styles": apply_scroll_styles,
+        "apply_combobox_style": apply_combobox_style,
         "label": tk.Label,
         "frame": tk.Frame,
         "entry": tk.Entry,
         "f_title": pet.f_title,
+        "f_h1": getattr(pet, "f_h1", pet.f_title),
+        "f_h2": getattr(pet, "f_h2", pet.f_ui_bold),
         "f_ui": pet.f_ui,
         "f_ui_bold": pet.f_ui_bold,
+        "f_ui_b": pet.f_ui_bold,
         "f_small": pet.f_small,
+        "f_mono": getattr(pet, "f_mono", pet.f_small),
         "f_chat": pet.f_chat,
     }
+
 
 
 def _plugin_on_tools_changed():
@@ -7264,79 +6924,78 @@ class DesktopPet:
         """插件信任确认窗口：勾选要加载的插件。返回被批准的插件名列表。"""
         dpi = self.dpi_scale
         win = tk.Toplevel(self.root)
-        win.title("虹语织 · 插件加载确认")
-        w, h = int(620 * dpi), int(min(560, 220 + 58 * len(pending)) * dpi)
-        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-        win.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 2)}")
-        win.config(bg=PAL["bg"])
-        win.attributes("-topmost", True)
-        try:
-            if self.app_icon is not None:
-                win.iconphoto(False, self.app_icon)
-        except Exception:
-            pass
+        w, h = int(640 * dpi), int(min(600, 260 + 74 * len(pending)) * dpi)
+        style_secondary_window(win, title="虹语织 · 插件加载确认", width=w, height=h,
+                               dpi=dpi, icon=self.app_icon, parent=self.root, topmost=True)
 
-        tk.Label(win, text="发现新的桌宠插件", font=self.f_title, fg=PAL["peri_deep"],
-                 bg=PAL["bg"]).pack(anchor="w", padx=int(20 * dpi), pady=(int(16 * dpi), int(4 * dpi)))
-        tk.Label(win, text="插件就是任意 Python 代码，加载后可以读写你的文件、执行命令、访问网络，"
-                           "等同于把本机权限交给它。\n只加载你信任的插件；确认后桌宠会按内容哈希记住，"
-                           "插件内容变了才会再问一次。",
+        head = tk.Frame(win, bg=PAL["bg"])
+        head.pack(fill=tk.X, padx=int(28 * dpi), pady=(int(18 * dpi), int(8 * dpi)))
+        tk.Label(head, text="发现新的桌宠插件", font=self.f_h1, fg=PAL["ink"],
+                 bg=PAL["bg"]).pack(anchor="w")
+        tk.Label(head, text="插件是任意 Python 代码，加载后可访问文件、网络与系统命令。"
+                            "请只启用你信任的插件；确认后按内容哈希记住，文件改动时才会再次询问。",
                  font=self.f_small, fg=PAL["ink_soft"], bg=PAL["bg"], justify="left",
-                 wraplength=int(570 * dpi)).pack(anchor="w", padx=int(20 * dpi))
-
-        card = tk.Frame(win, bg="#ffffff", highlightthickness=1,
-                        highlightbackground=PAL["line_soft"])
-        card.pack(fill=tk.BOTH, expand=True, padx=int(20 * dpi), pady=int(12 * dpi))
-        inner = tk.Frame(card, bg="#ffffff")
-        inner.pack(fill=tk.BOTH, expand=True, padx=int(14 * dpi), pady=int(12 * dpi))
-
-        variables = []
-        for item in pending:
-            var = tk.BooleanVar(value=True)
-            variables.append((item, var))
-            row = tk.Frame(inner, bg="#ffffff")
-            row.pack(fill=tk.X, pady=int(4 * dpi))
-            tk.Checkbutton(row, variable=var, bg="#ffffff", activebackground="#ffffff",
-                           highlightthickness=0, bd=0).pack(side=tk.LEFT)
-            text = tk.Frame(row, bg="#ffffff")
-            text.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            tag = "内容已变化，需要重新确认" if item.get("status") == "changed" else "新插件"
-            tk.Label(text, text=f"{item['name']}（{tag}）", font=self.f_ui_bold,
-                     fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
-            tk.Label(text, text=str(item.get("path") or ""), font=self.f_small,
-                     fg=PAL["ink_dim"], bg="#ffffff", justify="left",
-                     wraplength=int(500 * dpi)).pack(anchor="w")
+                 wraplength=int(560 * dpi)).pack(anchor="w", pady=(int(4 * dpi), 0))
 
         result = {"names": []}
+        switches = []
 
         def confirm():
-            result["names"] = [item["name"] for item, var in variables if var.get()]
+            result["names"] = [item["name"] for item, sw in switches if sw.is_on()]
             win.destroy()
 
         def skip_all():
             result["names"] = []
             win.destroy()
 
+        # Pin bottom buttons first
         bar = tk.Frame(win, bg=PAL["bg"])
-        bar.pack(fill=tk.X, padx=int(20 * dpi), pady=(0, int(16 * dpi)))
+        bar.pack(side=tk.BOTTOM, fill=tk.X, padx=int(28 * dpi),
+                 pady=(int(8 * dpi), int(16 * dpi)))
         PastelButton(bar, "加载所选插件", command=confirm, parent_bg=PAL["bg"],
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
-                     padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
+                     padx=int(16 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT)
         PastelButton(bar, "全部跳过", command=skip_all, parent_bg=PAL["bg"],
                      fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
-                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT,
-                                                                 padx=(int(8 * dpi), 0))
+                     padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT,
+                                                                 padx=(0, int(8 * dpi)))
         PastelButton(bar, "打开插件文件夹",
                      command=lambda: self._cc_open_path(PLUGINS_DIR), parent_bg=PAL["bg"],
                      fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
-                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT)
+                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
+
+        body, bind_wheel = self._cc_scrollable(win)
+        for item in pending:
+            pcard = RoundedFrame(body, radius=int(10 * dpi), fill="#ffffff",
+                                 border=PAL["line_soft"])
+            pcard.pack(fill=tk.X, pady=(0, int(8 * dpi)))
+            row = tk.Frame(pcard.body, bg="#ffffff")
+            row.pack(fill=tk.X, padx=int(18 * dpi), pady=int(12 * dpi))
+            text = tk.Frame(row, bg="#ffffff")
+            text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            tline = tk.Frame(text, bg="#ffffff")
+            tline.pack(anchor="w", fill=tk.X)
+            tk.Label(tline, text=item["name"], font=self.f_ui_bold,
+                     fg=PAL["ink"], bg="#ffffff").pack(side=tk.LEFT)
+            changed = item.get("status") == "changed"
+            Badge(tline, "内容已变化" if changed else "新插件",
+                  kind="warn" if changed else "info", parent_bg="#ffffff",
+                  font=self.f_small).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+            tk.Label(text, text=str(item.get("path") or ""), font=self.f_small,
+                     fg=PAL["ink_dim"], bg="#ffffff", justify="left",
+                     wraplength=int(480 * dpi)).pack(anchor="w", pady=(int(3 * dpi), 0))
+            sw = ToggleSwitch(row, initial=True, bg="#ffffff",
+                              width=int(42 * dpi), height=int(23 * dpi))
+            sw.pack(side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)))
+            switches.append((item, sw))
+        bind_wheel()
 
         win.protocol("WM_DELETE_WINDOW", skip_all)
+        win.bind("<Escape>", lambda _e: skip_all())
         try:
-            win.transient(self.root)
             win.grab_set()
         except Exception:
             pass
@@ -10712,6 +10371,21 @@ class DesktopPet:
     #    replacing the old right-click menu and the four separate
     #    windows (参数配置 / 长期记忆 / 管理工具 / 定时任务管理).
     # ------------------------------------------------------------------
+    # page key -> (Segoe Fluent / MDL2 icon glyph, header subtitle)
+    _CC_META = {
+        "overview": ("\uE80F", "织织的状态一览与常用入口"),
+        "behavior": ("\uE771", "大小、行为开关与动画节奏"),
+        "api":      ("\uE99A", "接口地址、模型、联网搜索与余额巡检"),
+        "schedule": ("\uE823", "提醒与定时任务，与聊天里设定的任务实时同步"),
+        "tools":    ("\uE90F", "控制 AI 可以调用哪些工具"),
+        "plugins":  ("\uEA86", "放 .py 进插件文件夹即可扩展织织"),
+        "memory":   ("\uE8F1", "长期记忆与用户画像（JSON）"),
+        "system":   ("\uE713", "文件、会话维护、电源与版本信息"),
+    }
+    # 这些页构建一次后缓存，切换只做显隐（瞬间切换）；
+    # 其余页内容会被托盘 / 右键菜单 / AI 改动（统计、开关、任务、记忆、插件），每次进入重建。
+    _CC_CACHED_PAGES = frozenset(("api", "tools", "system"))
+
     def open_control_center(self):
         """Open (or focus) the unified modern control-center window."""
         self.touch_interaction()
@@ -10729,9 +10403,12 @@ class DesktopPet:
 
         dpi = self.dpi_scale
         if not hasattr(self, "f_h1"):
-            self.f_h1 = tkfont.Font(self.root, family=self.fam_main, size=15, weight="bold")
+            self.f_h1 = tkfont.Font(self.root, family=self.fam_main, size=17, weight="bold")
             self.f_h2 = tkfont.Font(self.root, family=self.fam_main, size=11, weight="bold")
             self.f_nav = tkfont.Font(self.root, family=self.fam_main, size=10)
+            self.f_stat = tkfont.Font(self.root, family=self.fam_main, size=13, weight="bold")
+            self.f_hero = tkfont.Font(self.root, family=self.fam_title, size=16, weight="bold")
+            self._cc_icon_font = icon_family(self.root)
 
         # consistent pastel scrollbars across all control-center pages
         style = ttk.Style(self.root)
@@ -10746,14 +10423,15 @@ class DesktopPet:
                         lightcolor=PAL["scroll_thumb"],
                         darkcolor=PAL["scroll_thumb"],
                         arrowcolor=PAL["ink_soft"], relief="flat")
+        apply_scroll_styles(self.root, dpi)
 
         win = tk.Toplevel(self.root)
         self._cc_win = win
         win.title("虹语织 · 控制中心")
-        w, h = int(940 * dpi), int(640 * dpi)
+        w, h = int(980 * dpi), int(680 * dpi)
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
         win.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 2)}")
-        win.minsize(int(820 * dpi), int(560 * dpi))
+        win.minsize(int(860 * dpi), int(580 * dpi))
         win.config(bg=PAL["bg"])
         win.attributes("-topmost", True)
         try:
@@ -10763,83 +10441,123 @@ class DesktopPet:
             pass
         win.protocol("WM_DELETE_WINDOW", self._cc_close)
         win.bind("<Escape>", lambda e: self._cc_close())
+        style_titlebar(win, caption=PAL["panel2"], text=PAL["ink"])
 
         # ---------- left sidebar ----------
-        side_w = int(216 * dpi)
+        side_w = int(224 * dpi)
         side = tk.Frame(win, bg=PAL["panel2"], width=side_w)
         side.pack(side=tk.LEFT, fill=tk.Y)
         side.pack_propagate(False)
+        tk.Frame(win, bg=PAL["line_soft"], width=1).pack(side=tk.LEFT, fill=tk.Y)
 
         brand = tk.Frame(side, bg=PAL["panel2"])
-        brand.pack(fill=tk.X, pady=(int(20 * dpi), int(10 * dpi)))
-        avatar = self._cc_avatar(int(60 * dpi))
+        brand.pack(fill=tk.X, padx=int(18 * dpi), pady=(int(20 * dpi), int(6 * dpi)))
+        avatar = self._cc_avatar(int(46 * dpi))
         if avatar is not None:
             self._cc_avatar_img = avatar
-            tk.Label(brand, image=avatar, bg=PAL["panel2"]).pack()
-        tk.Label(brand, text="虹语织", font=self.f_title, fg=PAL["peri_deep"],
-                 bg=PAL["panel2"]).pack(pady=(int(6 * dpi), 0))
-        tk.Label(brand, text=f"NijiKori 控制中心 · v{APP_VERSION}", font=self.f_small,
-                 fg=PAL["ink_dim"], bg=PAL["panel2"]).pack()
+            tk.Label(brand, image=avatar, bg=PAL["panel2"]).pack(side=tk.LEFT)
+        names = tk.Frame(brand, bg=PAL["panel2"])
+        names.pack(side=tk.LEFT, padx=(int(10 * dpi), 0))
+        tk.Label(names, text="虹语织", font=self.f_title, fg=PAL["peri_deep"],
+                 bg=PAL["panel2"]).pack(anchor="w")
+        tk.Label(names, text=f"控制中心 · v{APP_VERSION}", font=self.f_small,
+                 fg=PAL["ink_dim"], bg=PAL["panel2"]).pack(anchor="w")
 
         # persistent quick actions: chat & balance always one click away
         qrow = tk.Frame(side, bg=PAL["panel2"])
-        qrow.pack(pady=(int(10 * dpi), int(2 * dpi)))
+        qrow.pack(fill=tk.X, padx=int(18 * dpi), pady=(int(12 * dpi), int(10 * dpi)))
         PastelButton(qrow, "聊天", command=self.open_chat_window,
                      parent_bg=PAL["panel2"], fill=PAL["btn_primary"],
                      fg=PAL["btn_primary_fg"], hover=PAL["btn_primary_hover"],
-                     font=self.f_ui, padx=int(11 * dpi), pady=int(5 * dpi)).pack(
-                         side=tk.LEFT, padx=(0, int(6 * dpi)))
+                     font=self.f_ui_bold, padx=int(16 * dpi), pady=int(6 * dpi)).pack(
+                         side=tk.LEFT, padx=(0, int(8 * dpi)))
         PastelButton(qrow, "余额", command=self.trigger_quota_check,
                      parent_bg=PAL["panel2"], fill="#ffffff",
                      fg=PAL["btn_soft_fg"], hover=PAL["btn_soft_hover"],
-                     font=self.f_ui, padx=int(11 * dpi), pady=int(5 * dpi)).pack(side=tk.LEFT)
-
-        nav_box = tk.Frame(side, bg=PAL["panel2"])
-        nav_box.pack(fill=tk.X, padx=int(10 * dpi), pady=int(6 * dpi))
-
-        pages = [
-            ("overview", "", "概览", self._cc_page_overview),
-            ("behavior", "", "外观与互动", self._cc_page_behavior),
-            ("api", "", "API 与模型", self._cc_page_api),
-            ("schedule", "", "定时任务", self._cc_page_schedule),
-            ("tools", "", "工具能力", self._cc_page_tools),
-            ("plugins", "", "插件扩展", self._cc_page_plugins),
-            ("memory", "", "记忆档案", self._cc_page_memory),
-            ("system", "", "系统与关于", self._cc_page_system),
-        ]
-        # 插件自己注册的控制中心页面接在固定页之后
-        try:
-            for entry in _PLUGINS.control_center_pages():
-                pages.append((entry["key"], entry["icon"], entry["title"],
-                              self._plugin_page_builder(entry)))
-        except Exception as exc:
-            print(f"[plugins] 插件页面注册失败: {exc}")
-        self._cc_pages = {k: (icon, label, fn) for k, icon, label, fn in pages}
-        self._cc_nav_items = {}
-        nav_w = side_w - int(20 * dpi)
-        for key, icon, label, _fn in pages:
-            item = SideNavItem(nav_box, icon, label, lambda k=key: self._cc_show(k),
-                               width=nav_w, height=int(40 * dpi),
-                               bg=PAL["panel2"], font=self.f_nav)
-            item.pack(fill=tk.X, pady=int(2 * dpi))
-            self._cc_nav_items[key] = item
+                     font=self.f_ui, padx=int(16 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT)
 
         tk.Label(side, text="小提示：右键桌宠打开快捷菜单\n聊天 / 查余额一键直达哦",
                  font=self.f_small, fg=PAL["ink_dim"], bg=PAL["panel2"],
                  justify="center").pack(side=tk.BOTTOM, pady=int(14 * dpi))
+        self._cc_navigation = ScrollableNavigation(side, dpi)
+        self._cc_navigation.pack(fill=tk.BOTH, expand=True, padx=int(10 * dpi), pady=int(4 * dpi))
+        nav_box = self._cc_navigation.body
 
-        # ---------- right content ----------
-        self._cc_content = tk.Frame(win, bg=PAL["bg"])
-        self._cc_content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        icon_font = getattr(self, "_cc_icon_font", None)
+
+        def _glyph(key):
+            return self._CC_META[key][0] if icon_font else ""
+
+        pages = [
+            ("overview", _glyph("overview"), "概览", self._cc_page_overview, icon_font),
+            ("behavior", _glyph("behavior"), "外观与互动", self._cc_page_behavior, icon_font),
+            ("api", _glyph("api"), "API 与模型", self._cc_page_api, icon_font),
+            ("schedule", _glyph("schedule"), "定时任务", self._cc_page_schedule, icon_font),
+            ("tools", _glyph("tools"), "工具能力", self._cc_page_tools, icon_font),
+            ("plugins", _glyph("plugins"), "插件扩展", self._cc_page_plugins, icon_font),
+            ("memory", _glyph("memory"), "记忆档案", self._cc_page_memory, icon_font),
+            ("system", _glyph("system"), "系统与关于", self._cc_page_system, icon_font),
+        ]
+        # 插件自己注册的控制中心页面接在固定页之后
+        try:
+            for entry in _PLUGINS.control_center_pages():
+                if entry["icon"]:          # 插件给的图标多为 emoji，用普通字体绘制
+                    p_icon, p_font = entry["icon"], None
+                else:
+                    p_icon, p_font = _glyph("plugins"), icon_font
+                pages.append((entry["key"], p_icon, entry["title"],
+                              self._plugin_page_builder(entry), p_font))
+        except Exception as exc:
+            print(f"[plugins] 插件页面注册失败: {exc}")
+        self._cc_pages = {k: (icon, label, fn) for k, icon, label, fn, _f in pages}
+        self._cc_nav_items = {}
+        nav_w = side_w - int(20 * dpi)
+        for key, icon, label, _fn, ifont in pages:
+            item = SideNavItem(nav_box, icon, label, lambda k=key: self._cc_show(k),
+                               width=nav_w, height=int(40 * dpi),
+                               bg=PAL["panel2"], font=self.f_nav, icon_font=ifont)
+            item.pack(fill=tk.X, pady=int(1 * dpi))
+            self._cc_navigation.bind_item(item)
+            self._cc_nav_items[key] = item
+
+        # ---------- right content: shared header + page host ----------
+        content = tk.Frame(win, bg=PAL["bg"])
+        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        head = tk.Frame(content, bg=PAL["bg"])
+        head.pack(fill=tk.X, padx=int(28 * dpi), pady=(int(22 * dpi), int(14 * dpi)))
+        titles = tk.Frame(head, bg=PAL["bg"])
+        titles.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._cc_title = tk.Label(titles, text="", font=self.f_h1, fg=PAL["ink"],
+                                  bg=PAL["bg"], anchor="w")
+        self._cc_title.pack(anchor="w")
+        self._cc_subtitle = tk.Label(titles, text="", font=self.f_small, fg=PAL["ink_dim"],
+                                     bg=PAL["bg"], anchor="w")
+        self._cc_subtitle.pack(anchor="w", pady=(int(2 * dpi), 0))
+
+        pin_row = tk.Frame(head, bg=PAL["bg"])
+        pin_row.pack(side=tk.RIGHT, anchor="n", pady=(int(8 * dpi), 0))
+        tk.Label(pin_row, text="窗口置顶", font=self.f_small, fg=PAL["ink_soft"],
+                 bg=PAL["bg"]).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
+        pin_sw = ToggleSwitch(pin_row, command=self._cc_set_pin,
+                              initial=bool(self.always_on_top),
+                              bg=PAL["bg"], width=int(40 * dpi), height=int(22 * dpi))
+        pin_sw.pack(side=tk.LEFT)
+        self._cc_topmost_switches = [pin_sw]
+
+        self._cc_content = tk.Frame(content, bg=PAL["bg"])
+        self._cc_content.pack(fill=tk.BOTH, expand=True)
 
         self._cc_current = None
         self._cc_page_frame = None
+        self._cc_page_cache = {}
         self._cc_pin = bool(self.always_on_top)
         self._cc_show("overview")
 
     def _cc_close(self):
         win = getattr(self, "_cc_win", None)
         self._cc_win = None
+        self._cc_page_cache = {}
         try:
             if win is not None:
                 win.destroy()
@@ -10891,68 +10609,144 @@ class DesktopPet:
         except Exception:
             pass
 
-    def _cc_show(self, key):
-        dpi = self.dpi_scale
-        if getattr(self, "_cc_page_frame", None) is not None:
+    def _cc_sync_topmost(self):
+        """页头置顶开关与「外观与互动」页里的置顶开关保持同一状态。"""
+        alive = []
+        for sw in getattr(self, "_cc_topmost_switches", []):
             try:
-                self._cc_page_frame.destroy()
+                if sw.winfo_exists():
+                    sw.set_state(bool(self.always_on_top))
+                    alive.append(sw)
+            except tk.TclError:
+                pass
+        self._cc_topmost_switches = alive
+
+    def _cc_invalidate(self, *keys):
+        """丢弃缓存页，下次进入时重建（当前正在显示的页离开时自动销毁）。"""
+        cache = getattr(self, "_cc_page_cache", None) or {}
+        for key in keys:
+            frame = cache.pop(key, None)
+            if frame is not None and frame is not getattr(self, "_cc_page_frame", None):
+                try:
+                    frame.destroy()
+                except Exception:
+                    pass
+
+    def _cc_show(self, key, force=False, animate=True):
+        if key not in self._cc_pages:
+            key = "overview"
+        icon, label, builder = self._cc_pages[key]
+        cache = self._cc_page_cache
+        old = self._cc_page_frame
+        if force:
+            self._cc_invalidate(key)
+        cached = cache.get(key)
+        if cached is not None and not cached.winfo_exists():
+            cache.pop(key, None)
+            cached = None
+        if old is not None and old is cached:
+            return                                   # already showing
+        if old is not None:
+            try:
+                if any(old is f for f in cache.values()):
+                    old.place_forget()
+                else:
+                    old.destroy()
             except Exception:
                 pass
-            self._cc_page_frame = None
-        icon, label, builder = self._cc_pages[key]
-        page = tk.Frame(self._cc_content, bg=PAL["bg"])
-        page.pack(fill=tk.BOTH, expand=True)
+        self._cc_page_frame = None
+
+        page = cached
+        if page is None:
+            page = tk.Frame(self._cc_content, bg=PAL["bg"])
+            self._cc_page_frame = page
+            if key in ("overview", "behavior", "api", "schedule", "tools",
+                       "plugins", "memory", "system"):
+                _PLUGINS.render_control_center_page(key, page, builder)
+            else:
+                builder(page)
+            if key in self._CC_CACHED_PAGES:
+                cache[key] = page
         self._cc_page_frame = page
         self._cc_current = key
+
         for k, item in self._cc_nav_items.items():
             item.set_selected(k == key)
-
-        head = tk.Frame(page, bg=PAL["bg"])
-        head.pack(fill=tk.X, padx=int(26 * dpi), pady=(int(20 * dpi), int(8 * dpi)))
-        tk.Label(head, text=label, font=self.f_h1, fg=PAL["ink"],
-                 bg=PAL["bg"]).pack(side=tk.LEFT)
-
-        pin_row = tk.Frame(head, bg=PAL["bg"])
-        pin_row.pack(side=tk.RIGHT)
-        tk.Label(pin_row, text="窗口置顶", font=self.f_small, fg=PAL["ink_soft"],
-                 bg=PAL["bg"]).pack(side=tk.LEFT, padx=(0, int(6 * dpi)))
-        ToggleSwitch(pin_row, command=self._cc_set_pin,
-                     initial=bool(self.always_on_top),
-                     bg=PAL["bg"], width=int(40 * dpi), height=int(22 * dpi)).pack(side=tk.LEFT)
-
-        if key in ("overview", "behavior", "api", "schedule", "tools",
-                   "plugins", "memory", "system"):
-            _PLUGINS.render_control_center_page(key, page, builder)
+        self._cc_navigation.reveal(self._cc_nav_items[key])
+        self._cc_title.config(text=label)
+        self._cc_subtitle.config(text=self._CC_META.get(key, ("", ""))[1])
+        self._cc_sync_topmost()
+        if animate:
+            self._cc_slide_in(page)
         else:
-            builder(page)
+            page.place(x=0, y=0, relwidth=1, relheight=1)
+
+    def _cc_slide_in(self, page):
+        """新页从下方 16px 轻轻滑入（约 150ms，ease-out）。"""
+        job = getattr(self, "_cc_slide_job", None)
+        if job is not None:
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+        offset = int(16 * self.dpi_scale)
+        steps = 9
+        state = {"i": 0}
+        page.place(x=0, y=offset, relwidth=1, relheight=1)
+
+        def tick():
+            state["i"] += 1
+            try:
+                page.place_configure(y=int(round(offset * (1 - ease_out(state["i"] / steps)))))
+            except tk.TclError:
+                self._cc_slide_job = None
+                return
+            self._cc_slide_job = self.root.after(16, tick) if state["i"] < steps else None
+
+        tick()
 
     # ---------- control-center shared building blocks ----------
     def _cc_scrollable(self, parent):
         """Scrollable page body; returns (body_frame, bind_wheel_fn)."""
         dpi = self.dpi_scale
         outer = tk.Frame(parent, bg=PAL["bg"])
-        outer.pack(fill=tk.BOTH, expand=True, padx=int(26 * dpi), pady=(0, int(16 * dpi)))
+        outer.pack(fill=tk.BOTH, expand=True, padx=(int(28 * dpi), int(10 * dpi)),
+                   pady=(0, int(6 * dpi)))
         canvas = tk.Canvas(outer, bg=PAL["bg"], highlightthickness=0, bd=0)
-        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview,
+                            style="CC.Vertical.TScrollbar")
         canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, int(10 * dpi)))
         body = tk.Frame(canvas, bg=PAL["bg"])
         _wid = canvas.create_window((0, 0), window=body, anchor="nw")
+        sb_state = {"shown": False}
+
+        def _sync_scrollbar():
+            # only show the scrollbar when the page is taller than the view
+            need = body.winfo_reqheight() > canvas.winfo_height() > 1
+            if need != sb_state["shown"]:
+                sb_state["shown"] = need
+                if need:
+                    vsb.pack(side=tk.RIGHT, fill=tk.Y, before=canvas)
+                else:
+                    vsb.pack_forget()
+                    canvas.yview_moveto(0)
 
         def _on_canvas_cfg(e):
             canvas.itemconfigure(_wid, width=e.width)
+            _sync_scrollbar()
 
         def _on_body_cfg(e):
             br = canvas.bbox("all")
             if br:
-                canvas.configure(scrollregion=br)
+                canvas.configure(scrollregion=(0, 0, br[2], br[3] + int(12 * dpi)))
+            _sync_scrollbar()
 
         canvas.bind("<Configure>", _on_canvas_cfg)
         body.bind("<Configure>", _on_body_cfg)
 
-        def _wheel(ev):
-            canvas.yview_scroll(int(-ev.delta / 120), "units")
+        scroller = SmoothScroll(canvas, step=int(72 * dpi))
+        _wheel = scroller.wheel
 
         def bind_wheel(w=None):
             """Make the mouse wheel work everywhere on the page: append the
@@ -10976,55 +10770,78 @@ class DesktopPet:
         canvas.bind("<MouseWheel>", _wheel, add="+")
         return body, bind_wheel
 
-    def _cc_card(self, parent, title=None, icon=None, subtitle=None):
-        """White flat card with a text header; icon kept for plugin compatibility."""
+    def _cc_card(self, parent, title=None, icon=None, subtitle=None,
+                 help_text=None, badge=None, badge_kind="info"):
+        """Rounded white card with a text header; icon kept for plugin compatibility.
+        Pass ``help_text`` to place a '?' popup button next to ``title``."""
         dpi = self.dpi_scale
-        card = tk.Frame(parent, bg="#ffffff", highlightthickness=1,
-                        highlightbackground=PAL["line_soft"], bd=0)
-        card.pack(fill=tk.X, pady=(0, int(14 * dpi)))
-        inner = tk.Frame(card, bg="#ffffff")
-        inner.pack(fill=tk.X, padx=int(18 * dpi), pady=int(14 * dpi))
+        card = RoundedFrame(parent, radius=int(10 * dpi), fill="#ffffff",
+                            border=PAL["line_soft"])
+        card.pack(fill=tk.X, pady=(0, int(12 * dpi)))
+        inner = tk.Frame(card.body, bg="#ffffff")
+        inner.card = card  # type: ignore[attr-defined]  # outer rounded frame (show / hide)
+        inner.pack(fill=tk.X, padx=int(20 * dpi), pady=(int(14 * dpi), int(16 * dpi)))
         if title:
             head = tk.Frame(inner, bg="#ffffff")
-            head.pack(fill=tk.X, pady=(0, int(10 * dpi)))
+            head.pack(fill=tk.X, pady=(0, int(8 * dpi)))
             tk.Label(head, text=title,
                      font=self.f_h2, fg=PAL["ink"], bg="#ffffff").pack(side=tk.LEFT)
+            if help_text:
+                HelpButton(head, title, help_text, parent_bg="#ffffff",
+                           dpi=dpi).pack(side=tk.LEFT, padx=(int(6 * dpi), 0))
+            if badge:
+                Badge(head, badge, kind=badge_kind, parent_bg="#ffffff",
+                      font=self.f_small).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
             if subtitle:
                 tk.Label(head, text=subtitle, font=self.f_small, fg=PAL["ink_dim"],
                          bg="#ffffff").pack(side=tk.RIGHT)
         return inner
 
     def _cc_toggle_row(self, parent, icon, title, desc, value, on_change):
-        """Text settings row; icon kept for plugin compatibility."""
+        """Text settings row (hairline-separated list); icon kept for plugin compatibility."""
         dpi = self.dpi_scale
-        row = tk.Frame(parent, bg="#ffffff")
+        bg = "#ffffff"
+        try:
+            bg = parent.cget("bg")
+        except Exception:
+            pass
+        if getattr(parent, "_cc_has_row", False):
+            tk.Frame(parent, bg=PAL["line_soft"], height=1).pack(fill=tk.X, pady=int(2 * dpi))
+        try:
+            parent._cc_has_row = True
+        except Exception:
+            pass
+        row = tk.Frame(parent, bg=bg)
         row.pack(fill=tk.X, pady=int(7 * dpi))
-        left = tk.Frame(row, bg="#ffffff")
+        left = tk.Frame(row, bg=bg)
         left.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Label(left, text=title, font=self.f_ui_bold, fg=PAL["ink"],
-                 bg="#ffffff").pack(anchor="w")
+                 bg=bg).pack(anchor="w")
         if desc:
             tk.Label(left, text=desc, font=self.f_small, fg=PAL["ink_soft"],
-                     bg="#ffffff", justify="left",
-                     wraplength=int(560 * dpi)).pack(anchor="w")
-        sw = ToggleSwitch(row, command=on_change, initial=bool(value), bg="#ffffff",
+                     bg=bg, justify="left",
+                     wraplength=int(540 * dpi)).pack(anchor="w", pady=(int(1 * dpi), 0))
+        sw = ToggleSwitch(row, command=on_change, initial=bool(value), bg=bg,
                           width=int(42 * dpi), height=int(23 * dpi))
-        sw.pack(side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)), pady=(int(8 * dpi), 0))
+        sw.pack(side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)))
         return sw
 
     def _cc_field(self, parent, label, value, show=None, placeholder=""):
-        """Labeled flat text field; returns the Entry widget.
+        """Labeled rounded text field; returns the Entry widget.
 
         占位提示（placeholder）只用于给用户看写法，不算作已填内容：
         输入框为空时显示灰色提示，聚焦即消失，失焦且仍为空时恢复。"""
         dpi = self.dpi_scale
-        tk.Label(parent, text=label, font=self.f_ui, fg=PAL["ink_soft"],
-                 bg="#ffffff").pack(anchor="w", pady=(int(8 * dpi), int(3 * dpi)))
-        e = tk.Entry(parent, bg="#fbfcfe", fg=PAL["ink"], insertbackground=PAL["peri"],
-                     font=self.f_chat, relief=tk.FLAT, highlightthickness=1,
-                     highlightbackground=PAL["line"], highlightcolor=PAL["cyan"],
-                     show=show or "")
-        e.pack(fill=tk.X, ipady=int(4 * dpi))
+        bg = "#ffffff"
+        try:
+            bg = parent.cget("bg")
+        except Exception:
+            pass
+        if label:
+            tk.Label(parent, text=label, font=self.f_ui, fg=PAL["ink_soft"],
+                     bg=bg).pack(anchor="w", pady=(int(10 * dpi), int(4 * dpi)))
+        e = rounded_entry(parent, self.f_ui, show=show or "", dpi=dpi)
+        e.box.pack(fill=tk.X)
         if value is not None and str(value) != "":
             e.insert(0, str(value))
         elif placeholder:
@@ -11047,8 +10864,8 @@ class DesktopPet:
                 if not e.get():
                     _show_hint()
 
-            e.bind("<FocusIn>", _on_focus_in)
-            e.bind("<FocusOut>", _on_focus_out)
+            e.bind("<FocusIn>", _on_focus_in, add="+")
+            e.bind("<FocusOut>", _on_focus_out, add="+")
             _show_hint()
 
             def _value():
@@ -11066,6 +10883,43 @@ class DesktopPet:
             e.cc_value = _value      # type: ignore[attr-defined]
             e.cc_set_value = _set_value  # type: ignore[attr-defined]
         return e
+
+    def _cc_combo(self, parent, label, values, value="", state="readonly",
+                  on_change=None, width=None):
+        """Labeled rounded combobox; returns the ttk.Combobox (with ``.var`` and ``.box``)."""
+        dpi = self.dpi_scale
+        bg = "#ffffff"
+        try:
+            bg = parent.cget("bg")
+        except Exception:
+            pass
+        if label:
+            tk.Label(parent, text=label, font=self.f_ui, fg=PAL["ink_soft"],
+                     bg=bg).pack(anchor="w", pady=(int(10 * dpi), int(4 * dpi)))
+        var = tk.StringVar(value=str(value if value is not None else ""))
+        cb = rounded_combobox(parent, textvariable=var, values=values,
+                              font=self.f_ui, dpi=dpi, width=width,
+                              state=state, on_change=on_change)
+        cb.box.pack(fill=tk.X)
+        cb.var = var  # type: ignore[attr-defined]
+        return cb
+
+    def _cc_text(self, parent, label=None, value="", height=5):
+        """Labeled rounded multiline text editor; returns the tk.Text (with ``.box``)."""
+        dpi = self.dpi_scale
+        bg = "#ffffff"
+        try:
+            bg = parent.cget("bg")
+        except Exception:
+            pass
+        if label:
+            tk.Label(parent, text=label, font=self.f_ui, fg=PAL["ink_soft"],
+                     bg=bg).pack(anchor="w", pady=(int(10 * dpi), int(4 * dpi)))
+        txt = rounded_text(parent, font=self.f_ui, height=height, dpi=dpi)
+        txt.box.pack(fill=tk.X)
+        if value:
+            txt.insert("1.0", str(value))
+        return txt
 
     def _cc_entry_value(self, entry):
         """读取输入框内容：带占位提示的字段返回真实值（未输入时为空串）。"""
@@ -11109,6 +10963,7 @@ class DesktopPet:
                 ti.update_menu()
         except Exception:
             pass
+        self._cc_sync_topmost()
 
     def _cc_set_confirm(self, v):
         self.config["confirm_before_command"] = bool(v)
@@ -11117,6 +10972,7 @@ class DesktopPet:
     def _cc_set_vision(self, v):
         self.config["vision_supported"] = bool(v)
         self.save_config()
+        self._cc_invalidate("tools")   # 识图开关影响工具页里的可用项
         self.show_speech("识图能力已更新！织织现在可以看图啦！(✧∇✧)" if v
                          else "识图能力已关闭，织织切回纯文本模式啦。(〃'▽'〃)", "默认", 2500)
 
@@ -11125,17 +10981,46 @@ class DesktopPet:
         dpi = self.dpi_scale
         body, bind_wheel = self._cc_scrollable(page)
 
-        # status hero card
-        card = self._cc_card(body)
-        hero = tk.Frame(card, bg="#ffffff")
-        hero.pack(fill=tk.X)
-        avatar = self._cc_avatar(int(84 * dpi))
-        if avatar is not None:
-            self._cc_hero_img = avatar
-            tk.Label(hero, image=avatar, bg="#ffffff").pack(side=tk.LEFT,
-                                                            padx=(0, int(18 * dpi)))
-        info = tk.Frame(hero, bg="#ffffff")
-        info.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # hero banner: pastel gradient + avatar + greeting (redrawn on resize)
+        hero_h = int(120 * dpi)
+        hero = tk.Canvas(body, height=hero_h, bg=PAL["bg"], highlightthickness=0, bd=0)
+        hero.pack(fill=tk.X, pady=(0, int(12 * dpi)))
+        avatar = self._cc_avatar(int(96 * dpi))
+        self._cc_hero_img = avatar
+        model = str(self.config.get("model") or "未设置模型")
+        pet_sz = int(self.config.get("pet_size", 220))
+        hero_state = {"w": 0, "job": None}
+
+        def draw_hero():
+            hero_state["job"] = None
+            w = hero_state["w"]
+            hero.delete("all")
+            hero._bg_img = gradient_photo(w, hero_h, int(14 * dpi), PAL["hero_a"], PAL["hero_b"])
+            hero.create_image(0, 0, image=hero._bg_img, anchor="nw")
+            x = int(26 * dpi)
+            if avatar is not None:
+                hero.create_image(x, hero_h // 2, image=avatar, anchor="w")
+                x += avatar.width() + int(18 * dpi)
+            hero.create_text(x, hero_h // 2 - int(14 * dpi), text="织织在线中～",
+                             font=self.f_hero, fill=PAL["peri_deep"], anchor="w")
+            hero.create_text(x, hero_h // 2 + int(16 * dpi),
+                             text=f"模型：{model}　·　大小：{pet_sz} px",
+                             font=self.f_small, fill=PAL["ink_soft"], anchor="w")
+
+        def on_hero_cfg(e):
+            if e.width <= 1 or e.width == hero_state["w"]:
+                return
+            first = hero_state["w"] == 0
+            hero_state["w"] = e.width
+            if hero_state["job"] is not None:
+                hero.after_cancel(hero_state["job"])
+            if first:
+                draw_hero()          # no blank flash on first show
+            else:
+                hero_state["job"] = hero.after(60, draw_hero)
+
+        hero.bind("<Configure>", on_hero_cfg)
+
         try:
             cats = self._get_tool_catalog()
             enabled_tools = sum(1 for c in cats if c["enabled"])
@@ -11152,24 +11037,36 @@ class DesktopPet:
                     n_mem += len(v)
         except Exception:
             n_mem = 0
+        try:
+            n_plugins = sum(1 for r in _PLUGINS.status()["plugins"] if r["status"] == "loaded")
+        except Exception:
+            n_plugins = 0
         stats = [
-            ("当前表情", str(getattr(self, "current_emotion", "默认"))),
-            ("当前大小", f"{int(self.config.get('pet_size', 220))} px"),
-            ("屏幕位置", f"({self.root.winfo_x()}, {self.root.winfo_y()})"),
+            ("当前大小", f"{pet_sz} px"),
+            ("屏幕位置", f"{self.root.winfo_x()}, {self.root.winfo_y()}"),
             ("窗口置顶", "已开启" if self.always_on_top else "已关闭"),
+            ("识图能力", "已开启" if self.config.get("vision_supported", DEFAULT_VISION_SUPPORTED) else "已关闭"),
             ("启用工具", f"{enabled_tools} / {total_tools}"),
             ("定时任务", f"{n_tasks} 个"),
             ("记忆条目", f"{n_mem} 条"),
-            ("当前模型", str(self.config.get("model") or "未设置")),
+            ("已加载插件", f"{n_plugins} 个"),
         ]
+        grid = tk.Frame(body, bg=PAL["bg"])
+        grid.pack(fill=tk.X, pady=(0, int(12 * dpi)))
+        gap = int(10 * dpi)
         for i, (k, v) in enumerate(stats):
-            r, c = divmod(i, 2)
-            cell = tk.Frame(info, bg="#ffffff")
-            cell.grid(row=r, column=c, sticky="w", padx=(0, int(30 * dpi)), pady=int(2 * dpi))
-            tk.Label(cell, text=k, font=self.f_small, fg=PAL["ink_dim"],
-                     bg="#ffffff").pack(side=tk.LEFT)
-            tk.Label(cell, text="  " + v, font=self.f_ui_bold, fg=PAL["ink"],
-                     bg="#ffffff").pack(side=tk.LEFT)
+            r, c = divmod(i, 4)
+            tile = RoundedFrame(grid, radius=int(10 * dpi), fill="#ffffff",
+                                border=PAL["line_soft"])
+            tile.grid(row=r, column=c, sticky="nsew",
+                      padx=(0 if c == 0 else gap, 0), pady=(0 if r == 0 else gap, 0))
+            tk.Label(tile.body, text=k, font=self.f_small, fg=PAL["ink_dim"],
+                     bg="#ffffff").pack(anchor="w", padx=int(16 * dpi), pady=(int(12 * dpi), 0))
+            tk.Label(tile.body, text=v, font=self.f_stat, fg=PAL["ink"],
+                     bg="#ffffff").pack(anchor="w", padx=int(16 * dpi),
+                                        pady=(int(2 * dpi), int(12 * dpi)))
+        for c in range(4):
+            grid.grid_columnconfigure(c, weight=1, uniform="stat")
 
         # quick actions
         card = self._cc_card(body, title="快捷操作")
@@ -11191,25 +11088,9 @@ class DesktopPet:
                      parent_bg="#ffffff", fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT)
-
-        # behavior quick toggles
-        card = self._cc_card(body, title="行为开关",
-                             subtitle="点击立即生效并写入 config.json")
-        self._cc_toggle_row(card, "", "自由漫步 (Wandering)",
-                            "待机闲暇时，织织会在屏幕安全区域内小碎步散步",
-                            bool(self.enable_wandering), self._cc_set_wander)
-        self._cc_toggle_row(card, "", "悬浮呼吸感 (Floating)",
-                            "待机时以正弦浮动上下轻飘，更有生命呼吸感",
-                            bool(self.enable_floating), self._cc_set_float)
-        self._cc_toggle_row(card, "", "视线跟随鼠标 (Mouse Facing)",
-                            "实时感知鼠标位置，自动转身朝向主人光标方向",
-                            bool(self.enable_mouse_facing), self._cc_set_facing)
-        self._cc_toggle_row(card, "", "窗口置顶 (Always On Top)",
-                            "把织织固定在所有窗口最上层（与头顶气泡同步）",
-                            bool(self.always_on_top), self._cc_set_topmost)
-        self._cc_toggle_row(card, "▣", "屏幕边框限制",
-                            "开启时限制在显示器工作区内；关闭后可部分移出，完全离屏会自动找回",
-                            self.enable_screen_edge_limit, self._cc_set_screen_edge_limit)
+        tk.Label(card, text="行为开关、大小与节奏都在「外观与互动」页。",
+                 font=self.f_small, fg=PAL["ink_dim"], bg="#ffffff").pack(
+                     anchor="w", pady=(int(12 * dpi), 0))
         bind_wheel()
 
     # ---------- page: appearance & behavior ----------
@@ -11262,9 +11143,10 @@ class DesktopPet:
         self._cc_toggle_row(card, "", "视线跟随鼠标 (Mouse Facing)",
                             "实时感知鼠标位置，自动转身朝向主人光标方向",
                             bool(self.enable_mouse_facing), self._cc_set_facing)
-        self._cc_toggle_row(card, "", "窗口置顶 (Always On Top)",
-                            "把织织固定在所有窗口最上层（与头顶气泡同步）",
-                            bool(self.always_on_top), self._cc_set_topmost)
+        self._cc_topmost_switches.append(self._cc_toggle_row(
+            card, "", "窗口置顶 (Always On Top)",
+            "把织织固定在所有窗口最上层（与头顶气泡同步）",
+            bool(self.always_on_top), self._cc_set_topmost))
         self._cc_toggle_row(card, "▣", "屏幕边框限制",
                             "开启时限制在显示器工作区内；关闭后可部分移出，完全离屏会自动找回",
                             self.enable_screen_edge_limit, self._cc_set_screen_edge_limit)
@@ -11321,51 +11203,49 @@ class DesktopPet:
         e_url = self._cc_field(conn, "API Base URL（接口地址）",
                                self.config.get("base_url", DEFAULT_BASE_URL))
         tk.Label(conn, text="API Key（密钥）", font=self.f_ui, fg=PAL["ink_soft"],
-                 bg="#ffffff").pack(anchor="w", pady=(int(8 * dpi), int(3 * dpi)))
+                 bg="#ffffff").pack(anchor="w", pady=(int(10 * dpi), int(4 * dpi)))
         key_row = tk.Frame(conn, bg="#ffffff")
         key_row.pack(fill=tk.X)
-        e_key = tk.Entry(key_row, bg="#fbfcfe", fg=PAL["ink"], insertbackground=PAL["peri"],
-                         font=self.f_chat, relief=tk.FLAT, highlightthickness=1,
-                         highlightbackground=PAL["line"], highlightcolor=PAL["cyan"],
-                         show="●")
-        e_key.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=int(4 * dpi))
+        e_key = rounded_entry(key_row, self.f_ui, show="●", dpi=dpi)
+        e_key.box.pack(side=tk.LEFT, fill=tk.X, expand=True)
         e_key.insert(0, self.config.get("api_key", DEFAULT_API_KEY))
         state = {"visible": False}
 
         def toggle_key():
             state["visible"] = not state["visible"]
             e_key.config(show="" if state["visible"] else "●")
-            btn_eye.config(text="隐藏" if state["visible"] else "显示")
+            btn_eye.set_text("隐藏" if state["visible"] else "显示")
 
-        btn_eye = tk.Button(key_row, text="显示", command=toggle_key,
-                            bg=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
-                            activebackground=PAL["btn_soft_hover"], relief=tk.FLAT,
-                            font=self.f_small, padx=int(8 * dpi), bd=0, cursor="hand2")
-        btn_eye.pack(side=tk.RIGHT, padx=(int(8 * dpi), 0), ipady=int(3 * dpi))
+        btn_eye = PastelButton(key_row, "显示", command=toggle_key, parent_bg="#ffffff",
+                               fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
+                               hover=PAL["btn_soft_hover"], font=self.f_small,
+                               padx=int(12 * dpi), pady=int(7 * dpi), radius=int(7 * dpi))
+        btn_eye.pack(side=tk.RIGHT, padx=(int(8 * dpi), 0))
 
-        e_model = self._cc_field(conn, "对话模型 (Model)（填你所用的模型 ID，无默认值）",
+        e_model = self._cc_field(conn, "对话模型 (Model)",
                                  self.config.get("model", DEFAULT_MODEL),
                                  placeholder="例如：厂商文档里的模型 ID")
-        e_rounds = self._cc_field(conn, "单轮对话工具调用链上限 max_tool_rounds（10 ~ 300）",
+        e_rounds = self._cc_field(conn, "单轮对话工具调用链上限（10 ~ 300）",
                                   str(int(self.config.get("max_tool_rounds", 80) or 80)))
 
-        search = self._cc_card(body, title="本地联网搜索")
-        tk.Label(search, text="本机直连百度、Brave、必应、360、DuckDuckGo，自动切换线路。\n"
-                              "无需搜索模型或密钥；返回网页来源，重复搜索缓存 2 分钟。",
-                 font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
-                 justify=tk.LEFT, anchor="w", wraplength=int(420 * dpi)).pack(fill=tk.X)
+        search_help = (
+            "本机直连百度、Brave、必应、360、DuckDuckGo，自动切换可用线路。\n\n"
+            "• 免配置：无需额外搜索模型或密钥\n"
+            "• 缓存加速：返回网页来源摘要，2 分钟内重复搜索直接命中缓存"
+        )
+        search = self._cc_card(body, title="本地联网搜索", help_text=search_help)
         e_search_timeout = self._cc_field(search, "搜索总超时（秒，3 ~ 30）",
                                           str(self.config.get("web_search_timeout_secs", SEARCH_TIMEOUT)))
         e_search_limit = self._cc_field(search, "默认结果数（1 ~ 10）",
                                         str(self.config.get("web_search_max_results", SEARCH_LIMIT)))
 
-        money = self._cc_card(body, title="电量巡检")
-        tk.Label(money, text="自动按你填写的 API 地址探测账户额度：兼容 OpenAI 计费接口 / OneAPI / NewAPI 中转站、\n"
-                             "DeepSeek、OpenRouter、硅基流动、Moonshot(Kimi) 等常见额度接口，其他接口也会自动尝试。\n"
-                             "阈值按账户币种比较（美元账户填美元金额，人民币账户填人民币金额）。",
-                 font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
-                 justify=tk.LEFT, anchor="w", wraplength=int(420 * dpi)).pack(fill=tk.X,
-                                                                             pady=(0, int(4 * dpi)))
+        money_help = (
+            "根据所填 API 地址自动探测账户剩余额度，低电量时主动提醒充电。\n\n"
+            "• 多平台兼容：支持 OpenAI 计费接口、OneAPI / NewAPI 中转站、"
+            "DeepSeek、OpenRouter、硅基流动、Moonshot (Kimi) 等常见接口\n"
+            "• 原币种比对：告警阈值直接按账户币种（美元 / 人民币）比较"
+        )
+        money = self._cc_card(body, title="电量巡检", help_text=money_help)
         e_threshold = self._cc_field(money, "电量告急阈值（账户币种下余额低于此值触发「想充电」）",
                                      str(self.config.get("low_balance_threshold",
                                                          DEFAULT_LOW_BALANCE_THRESHOLD)))
@@ -11373,9 +11253,16 @@ class DesktopPet:
                                     str(self.config.get("balance_check_interval_mins",
                                                         DEFAULT_BALANCE_CHECK_INTERVAL_MINS)))
 
-        vision = self._cc_card(body, title="识图能力")
+        vision_help = (
+            "开启后可将图片与截图直接发给视觉大模型识别（需当前模型支持图片输入）。\n\n"
+            "• 读图工具：启用 read_image 读取本地图片\n"
+            "• 截图直传：screenshot 不存盘时直接交由 AI 观看\n"
+            "• 桌面操作：computer_use 操作后自动回传窗口快照\n\n"
+            "关闭后将切回纯文本模式，screenshot 仍可正常保存截图文件。"
+        )
+        vision = self._cc_card(body, title="识图能力", help_text=vision_help)
         self._cc_toggle_row(vision, "", "开启识图 / 读图与截图回传",
-                            "开启 read_image 与截图回传（screenshot 不保存时直接给 AI 看、computer_use 操作后自动回传窗口快照）；关闭后 screenshot 仍可保存文件。请确认模型支持图片输入",
+                            "允许 AI 直接查看本地图片、屏幕截图与窗口快照（需模型支持视觉输入）",
                             bool(self.config.get("vision_supported",
                                                  DEFAULT_VISION_SUPPORTED)),
                             self._cc_set_vision)
@@ -11426,14 +11313,14 @@ class DesktopPet:
         self._normalize_reminders()
 
         info = tk.Frame(page, bg=PAL["bg"])
-        info.pack(fill=tk.X, padx=int(26 * dpi), pady=(0, int(6 * dpi)))
+        info.pack(fill=tk.X, padx=int(28 * dpi), pady=(0, int(8 * dpi)))
         tk.Label(info, text="所有任务与织织的定时工具共用一个列表：手动增删改与聊天里设定的任务实时同步。"
                             "循环任务到点自动重新排程；执行满 repeat_count 或超过 end_date 后自动移除。",
                  font=self.f_small, fg=PAL["ink_soft"], bg=PAL["bg"], justify="left",
-                 wraplength=int(640 * dpi)).pack(anchor="w")
+                 wraplength=int(660 * dpi)).pack(anchor="w")
 
         bar = tk.Frame(page, bg=PAL["bg"])
-        bar.pack(fill=tk.X, padx=int(26 * dpi), pady=(0, int(8 * dpi)))
+        bar.pack(fill=tk.X, padx=int(28 * dpi), pady=(0, int(10 * dpi)))
 
         def mbutton(text, cmd, fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                     hover=PAL["btn_soft_hover"]):
@@ -11441,11 +11328,20 @@ class DesktopPet:
                          hover=hover, font=self.f_ui, padx=int(12 * dpi),
                          pady=int(6 * dpi)).pack(side=tk.LEFT, padx=(0, int(8 * dpi)))
 
-        tree_card = tk.Frame(page, bg="#ffffff", highlightthickness=1,
-                             highlightbackground=PAL["line_soft"])
-        tree_card.pack(fill=tk.BOTH, expand=True, padx=int(26 * dpi))
-        tree_frame = tk.Frame(tree_card, bg="#ffffff")
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=int(10 * dpi), pady=int(10 * dpi))
+        # reserve the detail panel at the bottom first so the table never pushes it out
+        detail_box = RoundedFrame(page, radius=int(10 * dpi), fill=PAL["panel2"])
+        detail_box.pack(side=tk.BOTTOM, fill=tk.X, padx=int(28 * dpi),
+                        pady=(int(10 * dpi), int(16 * dpi)))
+        detail = tk.Label(detail_box.body, text="（未选中任务）", font=self.f_small,
+                          fg=PAL["ink_soft"], bg=PAL["panel2"], justify=tk.LEFT, anchor="w",
+                          wraplength=int(660 * dpi))
+        detail.pack(fill=tk.X, padx=int(16 * dpi), pady=int(10 * dpi))
+
+        tree_card = RoundedFrame(page, radius=int(10 * dpi), fill="#ffffff",
+                                 border=PAL["line_soft"])
+        tree_card.pack(fill=tk.BOTH, expand=True, padx=int(28 * dpi))
+        tree_frame = tk.Frame(tree_card.body, bg="#ffffff")
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=int(8 * dpi), pady=int(8 * dpi))
 
         style = ttk.Style(self.root)
         try:
@@ -11454,15 +11350,18 @@ class DesktopPet:
             pass
         style.configure("Sched.Treeview",
                         background="#ffffff", fieldbackground="#ffffff",
-                        foreground=PAL["ink"], rowheight=int(26 * dpi),
-                        font=self.f_ui, borderwidth=0)
+                        foreground=PAL["ink"], rowheight=int(34 * dpi),
+                        font=self.f_ui, borderwidth=0, relief="flat")
+        style.layout("Sched.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
         style.map("Sched.Treeview",
-                  background=[("selected", PAL["menu_active"])],
-                  foreground=[("selected", PAL["ink"])])
+                  background=[("selected", PAL["accent_soft"])],
+                  foreground=[("selected", PAL["peri_deep"])])
         style.configure("Sched.Treeview.Heading",
-                        background=PAL["btn_soft"], foreground=PAL["ink"],
-                        font=self.f_ui_bold, relief=tk.FLAT, borderwidth=0)
-        style.map("Sched.Treeview.Heading", background=[("active", PAL["btn_soft_hover"])])
+                        background="#ffffff", foreground=PAL["ink_dim"],
+                        font=self.f_small, relief="flat", borderwidth=0,
+                        bordercolor="#ffffff", lightcolor="#ffffff", darkcolor="#ffffff",
+                        padding=(int(6 * dpi), int(8 * dpi)))
+        style.map("Sched.Treeview.Heading", background=[("active", PAL["panel"])])
 
         cols = ("no", "message", "schedule", "next", "runs")
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings", style="Sched.Treeview")
@@ -11474,17 +11373,13 @@ class DesktopPet:
                 ("runs", "执行", 66, tk.CENTER)):
             tree.heading(c, text=text, anchor=anchor)
             tree.column(c, width=int(width * dpi), anchor=anchor, stretch=(c == "message"))
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview,
+                            style="CCCard.Vertical.TScrollbar")
         tree.configure(yscrollcommand=vsb.set)
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.tag_configure("odd", background=PAL["panel"])
         tree.tag_configure("off", foreground=PAL["ink_dim"])
-
-        detail = tk.Label(page, text="（未选中任务）", font=self.f_small, fg=PAL["ink_soft"],
-                          bg=PAL["panel"], justify=tk.LEFT, anchor="w",
-                          wraplength=int(640 * dpi))
-        detail.pack(fill=tk.X, padx=int(26 * dpi), pady=(int(8 * dpi), int(14 * dpi)),
-                    ipady=int(6 * dpi))
 
         def update_detail():
             sel = tree.selection()
@@ -11529,8 +11424,10 @@ class DesktopPet:
                     str(r.get("due_str") or ""),
                     runs_txt,
                 ))
+                tags = ("odd",) if i % 2 == 0 else ()
                 if done:
-                    tree.item(item, tags=("off",))
+                    tags += ("off",)
+                tree.item(item, tags=tags)
             if keep_selection and sel and tree.exists(sel[0]):
                 tree.selection_set(sel[0])
             update_detail()
@@ -11621,31 +11518,28 @@ class DesktopPet:
     # ---------- page: tools ----------
     def _cc_page_tools(self, page):
         dpi = self.dpi_scale
-        top = tk.Frame(page, bg=PAL["bg"])
-        top.pack(fill=tk.X, padx=int(26 * dpi), pady=(0, int(8 * dpi)))
-        tk.Label(top, text="开关 = 启用/停用并立即生效（影响 AI 可调用范围）。被停用后，"
-                           "对应 AI 工具调用、菜单动作与定时任务引用都会被拒绝。",
-                 font=self.f_small, fg=PAL["ink_soft"], bg=PAL["bg"], justify="left",
-                 wraplength=int(560 * dpi)).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        footer_lab = tk.Label(top, text="", font=self.f_small, fg=PAL["ink_dim"], bg=PAL["bg"])
-        footer_lab.pack(side=tk.RIGHT, anchor="n")
-
         bar = tk.Frame(page, bg=PAL["bg"])
-        bar.pack(fill=tk.X, padx=int(26 * dpi), pady=(0, int(8 * dpi)))
-        search_var = tk.StringVar()
-        hint = "搜索工具名 / 描述…"
-        e_search = tk.Entry(bar, textvariable=search_var, bg="#ffffff", fg=PAL["ink"],
-                            insertbackground=PAL["peri"], font=self.f_chat,
-                            relief=tk.FLAT, highlightthickness=1,
-                            highlightbackground=PAL["line"], highlightcolor=PAL["cyan"])
-        e_search.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=int(4 * dpi))
+        bar.pack(fill=tk.X, padx=int(28 * dpi), pady=(0, int(10 * dpi)))
+        hint = "搜索工具名 / 分类 / 描述…"
+        e_search = rounded_entry(bar, self.f_ui, fill="#ffffff", dpi=dpi)
+        e_search.box.pack(side=tk.LEFT, fill=tk.X, expand=True)
         e_search.insert(0, hint)
+        e_search.config(fg=PAL["ink_dim"])
 
         def _clear_hint(_e):
             if e_search.get() == hint:
                 e_search.delete(0, "end")
+                e_search.config(fg=PAL["ink"])
 
-        e_search.bind("<FocusIn>", _clear_hint)
+        def _restore_hint(_e):
+            if not e_search.get():
+                e_search.insert(0, hint)
+                e_search.config(fg=PAL["ink_dim"])
+
+        e_search.bind("<FocusIn>", _clear_hint, add="+")
+        e_search.bind("<FocusOut>", _restore_hint, add="+")
+
+        footer_lab = tk.Label(bar, text="", font=self.f_small, fg=PAL["ink_dim"], bg=PAL["bg"])
 
         def _update_footer():
             cats = self._get_tool_catalog()
@@ -11654,82 +11548,115 @@ class DesktopPet:
 
         body, bind_wheel = self._cc_scrollable(page)
 
-        def _filter():
-            txt = search_var.get().strip().lower()
-            return txt if txt and txt != hint else ""
-
-        def _on_all(on):
-            for c in self._get_tool_catalog():
-                self._set_tool_enabled(c["name"], on)
-            render(_filter())
-
         def make_cb(nm):
             def cb(v):
                 self._set_tool_enabled(nm, bool(v))
                 _update_footer()
             return cb
 
-        def render(filter_txt=""):
-            for w in body.winfo_children():
-                w.destroy()
-            cats = self._get_tool_catalog()
-            all_cats = list(cats)
-            if filter_txt:
-                cats = [c for c in cats
-                        if filter_txt in c["name"].lower()
-                        or filter_txt in c["description"].lower()]
-            groups, order = {}, []
-            for c in cats:
-                if c["category"] not in groups:
-                    groups[c["category"]] = []
-                    order.append(c["category"])
-                groups[c["category"]].append(c)
+        # ---- build every category header & tool card once; search toggles visibility ----
+        groups, order = {}, []
+        for c in self._get_tool_catalog():
+            if c["category"] not in groups:
+                groups[c["category"]] = []
+                order.append(c["category"])
+            groups[c["category"]].append(c)
 
-            if not cats:
-                tk.Label(body, text="（没有匹配的工具）", font=self.f_ui,
-                         fg=PAL["ink_soft"], bg=PAL["bg"]).pack(anchor="w", pady=int(8 * dpi))
-            for cat in order:
-                items = groups[cat]
-                card = self._cc_card(body, title=cat, subtitle=f"{len(items)} 个工具")
-                for c in items:
-                    row = tk.Frame(card, bg="#ffffff")
-                    row.pack(fill=tk.X, pady=int(4 * dpi))
-                    left = tk.Frame(row, bg="#ffffff")
-                    left.pack(side=tk.LEFT, fill=tk.X, expand=True)
-                    if c.get("vision_only") and not c.get("vision_available"):
-                        tk.Label(left, text=f"{c['name']}（未开启识图，可在「API 与模型」页打开）",
-                                 font=self.f_ui, fg=PAL["ink_dim"], bg="#ffffff").pack(anchor="w")
-                    else:
-                        tk.Label(left, text=c["name"], font=self.f_ui_bold,
-                                 fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
-                    desc = str(c["description"])
-                    tk.Label(left, text=desc[:80] + ("…" if len(desc) > 80 else ""),
-                             font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
-                             justify="left",
-                             wraplength=int(480 * dpi)).pack(anchor="w")
-                    if not (c.get("vision_only") and not c.get("vision_available")):
-                        ToggleSwitch(row, command=make_cb(c["name"]),
-                                     initial=bool(c["enabled"]), bg="#ffffff",
-                                     width=int(40 * dpi), height=int(22 * dpi)).pack(
-                                         side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)),
-                                         pady=(int(6 * dpi), 0))
+        sections = []      # [(cat_head, [(tool_card, haystack)])]
+        switches = {}      # tool name -> ToggleSwitch
+        for cat in order:
+            items = groups[cat]
+            cat_head = tk.Frame(body, bg=PAL["bg"])
+            cat_head.pack(fill=tk.X, pady=(int(6 * dpi), int(6 * dpi)))
+            tk.Label(cat_head, text=cat, font=self.f_h2, fg=PAL["peri_deep"],
+                     bg=PAL["bg"]).pack(side=tk.LEFT)
+            Badge(cat_head, f"{len(items)} 项", kind="info", parent_bg=PAL["bg"],
+                  font=self.f_small).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+
+            cards = []
+            for c in items:
+                tcard = RoundedFrame(body, radius=int(10 * dpi), fill="#ffffff",
+                                     border=PAL["line_soft"])
+                tcard.pack(fill=tk.X, pady=(0, int(8 * dpi)))
+                row = tk.Frame(tcard.body, bg="#ffffff")
+                row.pack(fill=tk.X, padx=int(18 * dpi), pady=int(12 * dpi))
+                left = tk.Frame(row, bg="#ffffff")
+                left.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+                title_line = tk.Frame(left, bg="#ffffff")
+                title_line.pack(anchor="w", fill=tk.X)
+                unavailable = c.get("vision_only") and not c.get("vision_available")
+                tk.Label(title_line, text=c["name"], font=self.f_ui_bold,
+                         fg=PAL["ink_dim"] if unavailable else PAL["ink"],
+                         bg="#ffffff").pack(side=tk.LEFT)
+                if unavailable:
+                    Badge(title_line, "需开启识图", kind="warn", parent_bg="#ffffff",
+                          font=self.f_small).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+
+                desc = str(c["description"])
+                tk.Label(left, text=desc[:96] + ("…" if len(desc) > 96 else ""),
+                         font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
+                         justify="left",
+                         wraplength=int(520 * dpi)).pack(anchor="w", pady=(int(4 * dpi), 0))
+                if not unavailable:
+                    sw = ToggleSwitch(row, command=make_cb(c["name"]),
+                                      initial=bool(c["enabled"]), bg="#ffffff",
+                                      width=int(42 * dpi), height=int(23 * dpi))
+                    sw.pack(side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)))
+                    switches[c["name"]] = sw
+                cards.append((tcard, (c["name"] + " " + cat + " " + desc).lower()))
+            sections.append((cat_head, cards))
+        empty = tk.Label(body, text="（没有匹配的工具）", font=self.f_ui,
+                         fg=PAL["ink_soft"], bg=PAL["bg"])
+
+        def apply_filter():
+            txt = e_search.get().strip().lower()
+            txt = "" if txt == hint.lower() else txt
+            any_match = False
+            for cat_head, cards in sections:
+                cat_head.pack_forget()
+                for tcard, _hay in cards:
+                    tcard.pack_forget()
+            empty.pack_forget()
+            for cat_head, cards in sections:
+                matched = [tcard for tcard, hay in cards if not txt or txt in hay]
+                if not matched:
+                    continue
+                any_match = True
+                cat_head.pack(fill=tk.X, pady=(int(6 * dpi), int(6 * dpi)))
+                for tcard in matched:
+                    tcard.pack(fill=tk.X, pady=(0, int(8 * dpi)))
+            if not any_match:
+                empty.pack(anchor="w", pady=int(8 * dpi))
+
+        search_job = {"id": None}
+
+        def on_key(_e=None):
+            if search_job["id"] is not None:
+                page.after_cancel(search_job["id"])
+            search_job["id"] = page.after(140, lambda: (search_job.update(id=None),
+                                                        apply_filter()))
+
+        def _on_all(on):
+            for c in self._get_tool_catalog():
+                self._set_tool_enabled(c["name"], on)
+            for sw in switches.values():
+                sw.set_state(on)
             _update_footer()
-            bind_wheel()
 
-        def _on_all_cmd(on):
-            return lambda: _on_all(on)
-
-        PastelButton(bar, "全部开启", command=_on_all_cmd(True), parent_bg=PAL["bg"],
+        PastelButton(bar, "全部开启", command=lambda: _on_all(True), parent_bg=PAL["bg"],
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui,
-                     padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
-        PastelButton(bar, "全部关闭", command=_on_all_cmd(False), parent_bg=PAL["bg"],
+                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+        PastelButton(bar, "全部关闭", command=lambda: _on_all(False), parent_bg=PAL["bg"],
                      fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
-                     padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+                     padx=int(12 * dpi), pady=int(7 * dpi)).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+        footer_lab.pack(side=tk.RIGHT, padx=(int(10 * dpi), 0))
 
-        e_search.bind("<KeyRelease>", lambda e: render(_filter()))
-        render("")
+        e_search.bind("<KeyRelease>", on_key)
+        _update_footer()
+        bind_wheel()
 
     # ---------- page: plugins ----------
     def _cc_page_plugins(self, page):
@@ -11747,8 +11674,7 @@ class DesktopPet:
         failed = [r for r in records if r["status"] == "failed"]
         denied = [r for r in records if r["status"] == "denied"]
 
-        card = self._cc_card(body, title="插件系统",
-                             subtitle="放 .py 进插件文件夹即可扩展织织")
+        card = self._cc_card(body, title="插件系统")
         tk.Label(card, text=f"插件文件夹：{status['plugins_dir']}",
                  font=self.f_small, fg=PAL["ink_soft"], bg="#ffffff",
                  justify="left", wraplength=int(560 * dpi)).pack(anchor="w",
@@ -11763,7 +11689,6 @@ class DesktopPet:
             self.config[key] = value
             self.save_config()
             if key == "enable_plugins":
-                # 总开关要立即生效：关掉就把已加载的插件全部卸下并回滚能力，打开就重新加载
                 try:
                     if value:
                         _PLUGINS.load_all(confirm=self._plugin_confirm_consent)
@@ -11804,56 +11729,51 @@ class DesktopPet:
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(12 * dpi), pady=int(6 * dpi)).pack(side=tk.LEFT)
 
-        card = self._cc_card(body, title="插件清单",
-                             subtitle="下划线开头的文件不会被加载，示例放在 _examples/")
+        sec_head = tk.Frame(body, bg=PAL["bg"])
+        sec_head.pack(fill=tk.X, pady=(int(4 * dpi), int(8 * dpi)))
+        tk.Label(sec_head, text="插件清单", font=self.f_h2, fg=PAL["peri_deep"],
+                 bg=PAL["bg"]).pack(side=tk.LEFT)
+        Badge(sec_head, f"{len(records)} 个", kind="info", parent_bg=PAL["bg"],
+              font=self.f_small).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+        tk.Label(sec_head, text="下划线开头的文件不会被加载，示例放在 _examples/",
+                 font=self.f_small, fg=PAL["ink_dim"], bg=PAL["bg"]).pack(side=tk.RIGHT)
+
         if not records:
-            tk.Label(card, text="还没有插件。把 .py 放进插件文件夹，或点上面的「启用示例插件」看看样例。",
+            empty_card = self._cc_card(body)
+            tk.Label(empty_card, text="还没有插件。把 .py 放进插件文件夹，或点上面的「启用示例插件」看看样例。",
                      font=self.f_ui, fg=PAL["ink_soft"], bg="#ffffff",
                      justify="left", wraplength=int(540 * dpi)).pack(anchor="w")
         for record in records:
-            row = tk.Frame(card, bg="#ffffff")
-            row.pack(fill=tk.X, pady=int(5 * dpi))
-            left = tk.Frame(row, bg="#ffffff")
+            pcard = RoundedFrame(body, radius=int(10 * dpi), fill="#ffffff",
+                                 border=PAL["line_soft"])
+            pcard.pack(fill=tk.X, pady=(0, int(10 * dpi)))
+            prow = tk.Frame(pcard.body, bg="#ffffff")
+            prow.pack(fill=tk.X, padx=int(20 * dpi), pady=int(14 * dpi))
+            left = tk.Frame(prow, bg="#ffffff")
             left.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            badge = {"loaded": "已加载", "failed": "加载失败",
-                     "denied": "未启用"}.get(record["status"], record["status"])
-            tk.Label(left, text=f"{record['name']}　{badge}", font=self.f_ui_bold,
-                     fg=PAL["ink"], bg="#ffffff").pack(anchor="w")
+
+            tline = tk.Frame(left, bg="#ffffff")
+            tline.pack(anchor="w", fill=tk.X)
+            tk.Label(tline, text=record["name"], font=self.f_ui_bold,
+                     fg=PAL["ink"], bg="#ffffff").pack(side=tk.LEFT)
+            st = record["status"]
+            b_txt = {"loaded": "已加载", "failed": "加载失败", "denied": "未启用"}.get(st, st)
+            b_kind = {"loaded": "ok", "failed": "err", "denied": "muted"}.get(st, "info")
+            Badge(tline, b_txt, kind=b_kind, parent_bg="#ffffff",
+                  font=self.f_small).pack(side=tk.LEFT, padx=(int(8 * dpi), 0))
+
             tk.Label(left, text=str(record["path"]), font=self.f_small, fg=PAL["ink_dim"],
                      bg="#ffffff", justify="left",
-                     wraplength=int(500 * dpi)).pack(anchor="w")
+                     wraplength=int(500 * dpi)).pack(anchor="w", pady=(int(4 * dpi), 0))
             if record["error"]:
                 tk.Label(left, text=f"原因：{record['error']}", font=self.f_small,
                          fg="#c2566b", bg="#ffffff", justify="left",
-                         wraplength=int(500 * dpi)).pack(anchor="w")
-            # ToggleSwitch 会把新状态作为第一个参数回传，所以插件名用 partial 绑定
-            ToggleSwitch(row, command=functools.partial(self._cc_plugins_toggle,
-                                                        record["name"]),
+                         wraplength=int(500 * dpi)).pack(anchor="w", pady=(int(2 * dpi), 0))
+            ToggleSwitch(prow, command=functools.partial(self._cc_plugins_toggle,
+                                                         record["name"]),
                          initial=(record["status"] == "loaded"), bg="#ffffff",
                          width=int(42 * dpi), height=int(23 * dpi)).pack(
                              side=tk.RIGHT, padx=(int(12 * dpi), int(2 * dpi)))
-
-        provided = []
-        if status["tools"]:
-            provided.append("工具：" + "、".join(status["tools"]))
-        if status["emotions"]:
-            provided.append("表情：" + "、".join(status["emotions"]))
-        if status["actions"]:
-            provided.append("动作：" + "、".join(status["actions"]))
-        if status["menu_items"]:
-            provided.append(f"右键菜单项：{status['menu_items']} 个")
-        if status["prompt_blocks"]:
-            provided.append(f"提示词段落：{status['prompt_blocks']} 段")
-        provided.append(f"插件页面：{len(status['pages'])} 个")
-        card = self._cc_card(body, title="插件带来的能力")
-        for line in provided:
-            tk.Label(card, text="• " + line, font=self.f_small, fg=PAL["ink_soft"],
-                     bg="#ffffff", justify="left",
-                     wraplength=int(560 * dpi)).pack(anchor="w", pady=int(1 * dpi))
-        tk.Label(card, text="要让 AI 自己写插件：跟织织说「写个插件实现 XXX」即可，"
-                            "她会读技能库里的「插件开发指南」并按模板写好后重新加载。",
-                 font=self.f_small, fg=PAL["ink_dim"], bg="#ffffff", justify="left",
-                 wraplength=int(560 * dpi)).pack(anchor="w", pady=(int(8 * dpi), 0))
         bind_wheel()
 
     def _cc_plugins_open_folder(self):
@@ -11873,7 +11793,8 @@ class DesktopPet:
             f"插件重载完成：成功 {len(summary.get('loaded') or [])} 个"
             + (f"，失败 {len(failed)} 个" if failed else "，失败 0 个") + " (✧∇✧)",
             "默认", 3500)
-        self._cc_show("plugins")
+        self._cc_invalidate("tools")
+        self._cc_show("plugins", animate=False)
 
     def _cc_plugins_examples(self):
         copied = _PLUGINS.enable_examples()
@@ -11887,7 +11808,8 @@ class DesktopPet:
             self.show_speech(f"示例插件已就位：{'、'.join(copied)}", "递爱心", 3500)
         else:
             self.show_speech("示例插件都已经在插件文件夹里啦～", "默认", 3000)
-        self._cc_show("plugins")
+        self._cc_invalidate("tools")
+        self._cc_show("plugins", animate=False)
 
     def _cc_plugins_toggle(self, name, enabled=None):
         """插件清单里的启用/停用开关。
@@ -11926,10 +11848,11 @@ class DesktopPet:
 
         def run():
             self._cc_plugins_refresh_job = None
+            self._cc_invalidate("tools")
             try:
                 if (getattr(self, "_cc_win", None) is not None
                         and getattr(self, "_cc_current", None) == "plugins"):
-                    self._cc_show("plugins")
+                    self._cc_show("plugins", animate=False)
             except Exception:
                 pass
 
@@ -11942,41 +11865,31 @@ class DesktopPet:
     def _cc_page_memory(self, page):
         dpi = self.dpi_scale
         top = tk.Frame(page, bg=PAL["bg"])
-        top.pack(fill=tk.X, padx=int(26 * dpi), pady=(0, int(8 * dpi)))
+        top.pack(fill=tk.X, padx=int(28 * dpi), pady=(0, int(8 * dpi)))
         tk.Label(top, text="织织的长期记忆与用户画像（JSON）。AI 会把这里的内容注入每次对话；保存后立即生效。",
                  font=self.f_small, fg=PAL["ink_soft"], bg=PAL["bg"]).pack(side=tk.LEFT)
 
         # reserve the button bar at the bottom FIRST so the expanding JSON
         # editor can never push it out of the window
         btns = tk.Frame(page, bg=PAL["bg"])
-        btns.pack(side=tk.BOTTOM, fill=tk.X, padx=int(26 * dpi),
-                  pady=(int(10 * dpi), int(16 * dpi)))
+        btns.pack(side=tk.BOTTOM, fill=tk.X, padx=int(28 * dpi),
+                  pady=(int(12 * dpi), int(16 * dpi)))
 
-        card = tk.Frame(page, bg="#ffffff", highlightthickness=1,
-                        highlightbackground=PAL["line_soft"])
-        card.pack(fill=tk.BOTH, expand=True, padx=int(26 * dpi))
-        inner = tk.Frame(card, bg="#ffffff")
-        inner.pack(fill=tk.BOTH, expand=True, padx=int(12 * dpi), pady=int(12 * dpi))
-        txt = tk.Text(inner, bg="#fbfcfe", fg=PAL["ink"], font=self.f_chat, wrap=tk.WORD,
-                      borderwidth=0, padx=10, pady=10, highlightthickness=0,
-                      insertbackground=PAL["peri"])
+        card = RoundedFrame(page, radius=int(10 * dpi), fill="#ffffff",
+                            border=PAL["line_soft"])
+        card.pack(fill=tk.BOTH, expand=True, padx=int(28 * dpi))
+        inner = tk.Frame(card.body, bg="#ffffff")
+        inner.pack(fill=tk.BOTH, expand=True, padx=int(6 * dpi), pady=int(8 * dpi))
+        txt = tk.Text(inner, bg="#ffffff", fg=PAL["ink"], font=self.f_ui, wrap=tk.WORD,
+                      borderwidth=0, padx=int(12 * dpi), pady=int(6 * dpi),
+                      highlightthickness=0, insertbackground=PAL["peri"],
+                      selectbackground=PAL["accent_soft"], selectforeground=PAL["ink"],
+                      spacing1=int(1 * dpi), spacing3=int(1 * dpi), undo=True)
         txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         txt.insert(tk.END, json.dumps(self.memory, ensure_ascii=False, indent=2))
 
-        style = ttk.Style(self.root)
-        try:
-            style.theme_use("clam")
-        except Exception:
-            pass
-        style.configure("Pastel.Vertical.TScrollbar",
-                        troughcolor=PAL["scroll_trough"],
-                        background=PAL["scroll_thumb"],
-                        bordercolor=PAL["scroll_trough"],
-                        lightcolor=PAL["scroll_thumb"],
-                        darkcolor=PAL["scroll_thumb"],
-                        arrowcolor=PAL["ink_soft"], relief="flat")
         scrollbar = ttk.Scrollbar(inner, orient="vertical",
-                                  style="Pastel.Vertical.TScrollbar", command=txt.yview)
+                                  style="CCCard.Vertical.TScrollbar", command=txt.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         txt.config(yscrollcommand=scrollbar.set)
 
@@ -12076,152 +11989,119 @@ class DesktopPet:
         dpi = self.dpi_scale
         edit_mode = task is not None
         win = tk.Toplevel(parent)
-        win.title("编辑定时任务" if edit_mode else "新增定时任务")
-        win.geometry(f"{int(580 * dpi)}x{int(720 * dpi)}")
-        win.config(bg=PAL["bg"])
-        win.attributes("-topmost", True)
-        try:
-            if self.app_icon is not None:
-                win.iconphoto(False, self.app_icon)
-        except Exception:
-            pass
+        style_secondary_window(
+            win,
+            title="编辑定时任务" if edit_mode else "新增定时任务",
+            width=int(620 * dpi),
+            height=int(740 * dpi),
+            dpi=dpi,
+            icon=self.app_icon,
+            parent=parent,
+        )
 
-        tk.Label(win, text="编辑定时任务" if edit_mode else "新增定时任务",
-                 font=self.f_title, fg=PAL["peri"], bg=PAL["bg"]).pack(anchor="w",
-                 padx=int(16 * dpi), pady=(int(12 * dpi), int(6 * dpi)))
+        # Header
+        head = tk.Frame(win, bg=PAL["bg"])
+        head.pack(fill=tk.X, padx=int(28 * dpi), pady=(int(18 * dpi), int(8 * dpi)))
+        tk.Label(head, text="编辑定时任务" if edit_mode else "新增定时任务",
+                 font=self.f_h1, fg=PAL["ink"], bg=PAL["bg"]).pack(anchor="w")
+        hint_txt = ("保存后会按新设定重新计算执行时间，已执行次数清零。"
+                    if edit_mode else
+                    "什么都不填时默认 1 分钟后提醒一次；循环任务按设定自动计算首次执行时间。")
+        tk.Label(head, text=hint_txt, font=self.f_small, fg=PAL["ink_soft"],
+                 bg=PAL["bg"], justify=tk.LEFT,
+                 wraplength=int(540 * dpi)).pack(anchor="w", pady=(int(3 * dpi), 0))
 
-        # scrollable body
-        outer = tk.Frame(win, bg=PAL["bg"])
-        outer.pack(fill=tk.BOTH, expand=True, padx=int(10 * dpi), pady=(0, int(6 * dpi)))
-        canvas = tk.Canvas(outer, bg=PAL["bg"], highlightthickness=0, bd=0)
-        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        body = tk.Frame(canvas, bg=PAL["bg"])
-        _wid = canvas.create_window((0, 0), window=body, anchor="nw")
+        # Pin footer buttons at the bottom first so they never get pushed off-screen
+        btn_box = tk.Frame(win, bg=PAL["bg"])
+        btn_box.pack(side=tk.BOTTOM, fill=tk.X, padx=int(28 * dpi),
+                     pady=(int(8 * dpi), int(16 * dpi)))
 
-        def _on_canvas_cfg(e):
-            canvas.itemconfigure(_wid, width=e.width)
-
-        def _on_body_cfg(e):
-            br = canvas.bbox("all")
-            if br:
-                canvas.configure(scrollregion=br)
-
-        canvas.bind("<Configure>", _on_canvas_cfg)
-        body.bind("<Configure>", _on_body_cfg)
+        body, bind_wheel = self._cc_scrollable(win)
 
         def task_key(k, d=""):
             return str((task or {}).get(k, d) or d)
 
-        pd = {"padx": int(16 * dpi), "pady": int(2 * dpi)}
+        # Card 1: Basic Info
+        c_basic = self._cc_card(body, title="基本信息", subtitle="必填任务内容与执行动作")
+        e_msg = self._cc_field(c_basic, "任务内容 / 提醒文案（必填）",
+                               task_key("message"),
+                               placeholder="例如：提醒主人喝水、每隔两天备份笔记")
+        cb_type = self._cc_combo(
+            c_basic, "任务类型",
+            ("reminder", "open_website", "run_command", "open_file",
+             "set_volume", "lock_screen", "screenshot", "custom"),
+            value=task_key("task_type", "reminder"),
+        )
+        type_var = cb_type.var
+        e_target = self._cc_field(c_basic, "任务目标（网址 / 命令 / 路径 / 音量，非必填）",
+                                  task_key("task_target"))
 
-        def flabel(text):
-            tk.Label(body, text=text, font=self.f_ui, fg=PAL["ink_soft"],
-                     bg=PAL["bg"]).pack(anchor="w", **pd)
+        # Card 2: Schedule Rules
+        c_sched = self._cc_card(body, title="定时规则",
+                                subtitle="支持结构化字段或一句话自然语言")
+        cb_repeat = self._cc_combo(
+            c_sched,
+            "执行方式（once 单次 / interval 间隔 / daily 每天 / weekly 每周 / monthly 每月 / cron）",
+            ("once", "interval", "daily", "weekly", "monthly", "cron"),
+            value=task_key("repeat", "once"),
+        )
+        repeat_var = cb_repeat.var
+        e_sched = self._cc_field(
+            c_sched,
+            "一句话描述（新增时可填，如「隔两天」「每天 18:00」，与上方字段可二选一）",
+            task_key("schedule"),
+        )
+        e_at = self._cc_field(c_sched, "执行时间 at_time（HH:MM 或 9点半）",
+                              task_key("at_time", "09:00"))
 
-        def fentry(default_val=""):
-            e = tk.Entry(body, bg="#ffffff", fg=PAL["ink"], insertbackground=PAL["peri"],
-                         font=self.f_chat, relief=tk.FLAT, highlightthickness=1,
-                         highlightbackground=PAL["line"], highlightcolor=PAL["cyan"])
-            e.pack(fill=tk.X, padx=int(16 * dpi), ipady=2)
-            e.insert(0, str(default_val if default_val is not None else ""))
-            return e
-
-        def row():
-            r = tk.Frame(body, bg=PAL["bg"])
-            r.pack(fill=tk.X, padx=int(16 * dpi))
-            return r
-
-        flabel("任务内容 / 提醒文案 (必填):")
-        e_msg = fentry(task_key("message"))
-
-        flabel("任务类型:")
-        type_var = tk.StringVar(value=task_key("task_type", "reminder"))
-        ttk.Combobox(body, textvariable=type_var,
-                     values=("reminder", "open_website", "run_command", "open_file",
-                             "set_volume", "lock_screen", "screenshot", "custom"),
-                     state="readonly", font=self.f_ui).pack(fill=tk.X, padx=int(16 * dpi), pady=(0, int(6 * dpi)))
-
-        flabel("任务目标 (网址/命令/路径/音量，非必填):")
-        e_target = fentry(task_key("task_target"))
-
-        flabel("执行方式 repeat (once=单次 / interval=间隔循环 / daily=每天 / weekly=每周 / monthly=每月 / cron=表达式):")
-        repeat_var = tk.StringVar(value=task_key("repeat", "once"))
-        ttk.Combobox(body, textvariable=repeat_var,
-                     values=("once", "interval", "daily", "weekly", "monthly", "cron"),
-                     state="readonly", font=self.f_ui).pack(fill=tk.X, padx=int(16 * dpi), pady=(0, int(6 * dpi)))
-
-        flabel("interval 间隔数值 & 单位 (如 隔两天 → 数值2 / 单位 days):")
-        r1 = row()
-        e_iv = tk.Entry(r1, width=8, bg="#ffffff", fg=PAL["ink"], insertbackground=PAL["peri"],
-                        font=self.f_chat, relief=tk.FLAT, highlightthickness=1,
-                        highlightbackground=PAL["line"], highlightcolor=PAL["cyan"])
-        e_iv.pack(side=tk.LEFT, ipady=2)
+        tk.Label(c_sched, text="间隔循环 interval（数值与单位，如 隔两天 → 2 + days）",
+                 font=self.f_ui, fg=PAL["ink_soft"],
+                 bg="#ffffff").pack(anchor="w", pady=(int(10 * dpi), int(4 * dpi)))
+        r_iv = tk.Frame(c_sched, bg="#ffffff")
+        r_iv.pack(fill=tk.X)
+        e_iv = rounded_entry(r_iv, self.f_ui, dpi=dpi, width=10)
+        e_iv.box.pack(side=tk.LEFT)
         e_iv.insert(0, task_key("interval_value", "1"))
         unit_var = tk.StringVar(value=task_key("interval_unit", "days"))
-        ttk.Combobox(r1, textvariable=unit_var, values=("minutes", "hours", "days", "weeks"),
-                     state="readonly", font=self.f_ui, width=10).pack(side=tk.LEFT, padx=(int(8 * dpi), 0), ipady=2)
+        cb_unit = rounded_combobox(r_iv, textvariable=unit_var,
+                                   values=("minutes", "hours", "days", "weeks"),
+                                   font=self.f_ui, dpi=dpi, width=12)
+        cb_unit.box.pack(side=tk.LEFT, padx=(int(10 * dpi), 0))
 
-        flabel("weekly 星期几 (如 '1,4' / '周一,周四' / '工作日' / '周末'):")
-        e_wd = fentry(task_key("weekdays"))
+        e_wd = self._cc_field(c_sched, "每周几 weekdays（如 1,4 / 周一,周四 / 工作日 / 周末）",
+                              task_key("weekdays"))
+        e_dom = self._cc_field(c_sched, "每月几号 day_of_month（1 ~ 31）",
+                               task_key("day_of_month", "1"))
+        e_cron = self._cc_field(c_sched, "Cron 表达式（5 段，如 0 9 * * 1 = 每周一 9 点）",
+                                task_key("cron"))
 
-        flabel("monthly 每月几号 (1~31):")
-        e_dom = fentry(task_key("day_of_month", "1"))
+        # Card 3: Stop Conditions
+        c_limit = self._cc_card(body, title="结束条件", subtitle="非必填，达到条件后自动移除")
+        e_rc = self._cc_field(c_limit, "循环次数上限 repeat_count（如 4 = 执行 4 次后停止）",
+                              task_key("repeat_count", ""))
+        e_end = self._cc_field(c_limit, "截止日期 end_date（YYYY-MM-DD）",
+                               task_key("end_date", ""))
 
-        flabel("daily/weekly/monthly 执行时间 at_time (HH:MM 或 9点半):")
-        e_at = fentry(task_key("at_time", "09:00"))
-
-        flabel("循环次数上限 repeat_count (非必填，如 4 = 执行4次后自动停止):")
-        e_rc = fentry(task_key("repeat_count", ""))
-
-        flabel("截止日期 end_date (YYYY-MM-DD，非必填):")
-        e_end = fentry(task_key("end_date", ""))
-
-        flabel("cron 表达式 (5段，如 '0 9 * * 1' = 每周一9点):")
-        e_cron = fentry(task_key("cron"))
-
-        flabel("一句话描述 schedule (新增时可填，如 '隔两天' / '每天18:00'，与上方结构化字段可二选一):")
-        e_sched = fentry(task_key("schedule"))
-
-        def _wheel(ev):
-            canvas.yview_scroll(int(-ev.delta / 120), "units")
-
-        for w in body.winfo_children():
-            try:
-                w.bind("<MouseWheel>", _wheel, add="+")
-            except Exception:
-                pass
-
-        if edit_mode:
-            hint_txt = "提示：保存后会按新设定重新计算执行时间，已执行次数清零。"
-        else:
-            hint_txt = "提示：什么都不填时会在1分钟后提醒一次；循环任务按设定自动计算首次执行时间。"
-        tk.Label(win, text=hint_txt, font=self.f_small, fg=PAL["ink_dim"], bg=PAL["bg"],
-                 justify=tk.LEFT, wraplength=int(540 * dpi)).pack(anchor="w", padx=int(16 * dpi), pady=(int(2 * dpi), int(4 * dpi)))
+        bind_wheel()
 
         def do_save():
-            msg = e_msg.get().strip()
+            msg = self._cc_entry_value(e_msg)
             if not msg:
                 messagebox.showwarning("提示", "任务内容不能为空！", parent=win)
                 return
-            sched_txt = e_sched.get().strip()
+            sched_txt = self._cc_entry_value(e_sched)
             repeat_sel = repeat_var.get()
-            # If the repeat combo is still the default "once" but the user gave
-            # a free-text schedule (or the message itself contains a schedule
-            # phrase like 隔两天 / 每周一), let the natural-language parser decide.
             if repeat_sel == "once" and (sched_txt or _parse_schedule_text(msg)):
                 repeat_sel = ""
             args = {
                 "message": msg,
                 "task_type": type_var.get(),
-                "task_target": e_target.get().strip(),
+                "task_target": self._cc_entry_value(e_target),
                 "repeat": repeat_sel,
-                "at_time": e_at.get().strip(),
-                "weekdays": e_wd.get().strip(),
-                "end_date": e_end.get().strip(),
-                "cron": e_cron.get().strip(),
+                "at_time": self._cc_entry_value(e_at),
+                "weekdays": self._cc_entry_value(e_wd),
+                "end_date": self._cc_entry_value(e_end),
+                "cron": self._cc_entry_value(e_cron),
                 "schedule": sched_txt,
             }
             try:
@@ -12230,16 +12110,16 @@ class DesktopPet:
                 args["interval_value"] = 1
             args["interval_unit"] = unit_var.get()
             try:
-                args["day_of_month"] = int(e_dom.get().strip() or 1)
+                args["day_of_month"] = int(self._cc_entry_value(e_dom) or 1)
             except Exception:
                 args["day_of_month"] = 1
-            if e_rc.get().strip():
+            rc_str = self._cc_entry_value(e_rc)
+            if rc_str:
                 try:
-                    args["repeat_count"] = int(e_rc.get().strip())
+                    args["repeat_count"] = int(rc_str)
                 except Exception:
                     pass
 
-            # validate & build a candidate on a copy; commit only on success
             if edit_mode:
                 cand = dict(task)
                 for k in ("repeat", "interval_value", "interval_unit", "weekdays", "day_of_month",
@@ -12251,12 +12131,12 @@ class DesktopPet:
                     "id": "task_%d_%d" % (len(self._reminders) + 1, int(time.time()) % 10000),
                     "message": msg,
                     "task_type": type_var.get(),
-                    "task_target": e_target.get().strip(),
+                    "task_target": args["task_target"],
                     "runs": 0,
                 }
             cand["message"] = msg
             cand["task_type"] = type_var.get()
-            cand["task_target"] = e_target.get().strip()
+            cand["task_target"] = args["task_target"]
             cand["runs"] = 0
             cand.update(_build_schedule_spec(args))
             cand.setdefault("repeat", "once")
@@ -12297,9 +12177,7 @@ class DesktopPet:
             win.destroy()
             self.show_speech("定时任务已保存！(〃'▽'〃)", "默认", 2500)
 
-        btn_box = tk.Frame(win, bg=PAL["bg"], pady=int(10 * dpi))
-        btn_box.pack(fill=tk.X, padx=int(16 * dpi))
-        PastelButton(btn_box, "保存", command=do_save, parent_bg=PAL["bg"],
+        PastelButton(btn_box, "保存任务", command=do_save, parent_bg=PAL["bg"],
                      fill=PAL["btn_primary"], fg=PAL["btn_primary_fg"],
                      hover=PAL["btn_primary_hover"], font=self.f_ui_bold,
                      padx=int(18 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT)
@@ -12307,6 +12185,7 @@ class DesktopPet:
                      fill=PAL["btn_soft"], fg=PAL["btn_soft_fg"],
                      hover=PAL["btn_soft_hover"], font=self.f_ui,
                      padx=int(14 * dpi), pady=int(7 * dpi)).pack(side=tk.RIGHT, padx=int(10 * dpi))
+        win.bind("<Escape>", lambda _e: win.destroy())
 
     def restart_pet(self):
         """Restart the pet app silently (same interpreter / exe, no console)."""

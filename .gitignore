@@ -9,7 +9,7 @@ data/*
 /plugins/
 /resources/plugins/
 /integrations/minecraft/
-# 本地测试、烟测、安装/构建/打包辅助工具及设计文档
+# 本机维护工具、设计文档；历史测试代码归档在 release/_archive/
 /tests/
 /tools/
 /docs/

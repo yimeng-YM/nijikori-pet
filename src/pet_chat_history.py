@@ -23,6 +23,14 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+from pet_ui_kit import (
+    RoundedFrame,
+    SmoothScroll,
+    apply_scroll_styles,
+    round_rect_photo,
+    style_titlebar,
+)
+
 # Blocks drawn per virtualized page. Older blocks are reachable through the
 # "载入更早" affordance at the top of the transcript.
 PAGE_BLOCKS = 60
@@ -252,8 +260,6 @@ class _Chip(tk.Canvas):
         self._rounded = rounded_rect
         self._active = bool(active)
         self._hover = False
-        # NOTE: never use `_w`/`_h` here — tkinter.Misc stores the widget's Tk
-        # path name in `_w` and clobbering it breaks the widget.
         self._cw, self._ch = self._measure()
         super().__init__(master, width=self._cw, height=self._ch,
                          bg=pal["bg"], highlightthickness=0, bd=0, cursor="hand2")
@@ -264,7 +270,7 @@ class _Chip(tk.Canvas):
 
     # -- geometry ---------------------------------------------------------
     def _measure(self):
-        pad = int(round(11 * self.dpi))
+        pad = int(round(12 * self.dpi))
         self._label_key = self._label.split(" ")[0]
         return self.font.measure(self._label) + pad * 2, self.font.metrics("linespace") + int(round(9 * self.dpi))
 
@@ -289,7 +295,7 @@ class _Chip(tk.Canvas):
         self.delete("all")
         pal = self.pal
         if self._active:
-            fill = pal["peri"]
+            fill = pal.get("accent", pal["peri"])
             fg = "#ffffff"
         elif self._hover:
             fill = pal["btn_soft_hover"]
@@ -297,10 +303,9 @@ class _Chip(tk.Canvas):
         else:
             fill = pal["btn_soft"]
             fg = pal["btn_soft_fg"]
-        r = self._ch / 2
-        self._rounded(self, 0.5, 0.5, self._cw - 0.5, self._ch - 0.5, r,
-                      fill=fill, outline="")
-        self.create_text(self._cw / 2, self._ch / 2, text=self._label,
+        self._img = round_rect_photo(self._cw, self._ch, self._ch // 2, fill)
+        self.create_image(0, 0, image=self._img, anchor="nw")
+        self.create_text(self._cw // 2, self._ch // 2, text=self._label,
                          font=self.font, fill=fg)
 
     def _on_enter(self, _event=None):
@@ -345,6 +350,7 @@ class ChatHistoryWindow:
         self._blocks = []
         self._visible = []
         self._hits = []
+        self._canvas_imgs = []
         self._filter = "all"
         self._query = ""
         self._limit = PAGE_BLOCKS
@@ -370,7 +376,14 @@ class ChatHistoryWindow:
         self.win = win
         win.title(self.title)
         win.config(bg=pal["bg"])
-        win.geometry(f"{px(720)}x{px(700)}")
+        w, h = px(740), px(720)
+        try:
+            sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+            w = min(w, max(480, sw - 60))
+            h = min(h, max(440, sh - 60))
+            win.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 2)}")
+        except Exception:
+            win.geometry(f"{w}x{h}")
         win.minsize(px(470), px(430))
         win.attributes("-topmost", True)
         win.protocol("WM_DELETE_WINDOW", self.close)
@@ -380,38 +393,38 @@ class ChatHistoryWindow:
                 win.iconphoto(False, icon)
         except Exception:
             pass
+        apply_scroll_styles(win, dpi=self.dpi)
+        style_titlebar(win, caption=pal["bg"], text=pal["ink"])
 
         # ---- header: title + live session stats ------------------------
-        # No custom ✕ here: the toplevel already has a native close button.
         header = tk.Frame(win, bg=pal["bg"])
-        header.pack(fill=tk.X, padx=px(18), pady=(px(14), 0))
+        header.pack(fill=tk.X, padx=px(22), pady=(px(16), 0))
         title_col = tk.Frame(header, bg=pal["bg"])
         title_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Label(title_col, text="对话记录", font=fonts["title"],
-                 fg=pal["peri"], bg=pal["bg"]).pack(anchor="w")
+                 fg=pal["ink"], bg=pal["bg"]).pack(anchor="w")
         self.subtitle = tk.Label(title_col, text=self.get_subtitle(),
                                  font=fonts["small"], fg=pal["ink_soft"],
                                  bg=pal["bg"], anchor="w", justify="left")
-        self.subtitle.pack(anchor="w")
+        self.subtitle.pack(anchor="w", pady=(px(2), 0))
 
         # ---- toolbar: search + record actions --------------------------
         bar = tk.Frame(win, bg=pal["bg"])
-        bar.pack(fill=tk.X, padx=px(18), pady=(px(10), 0))
-        search_wrap = tk.Frame(bar, bg="#ffffff", highlightthickness=1,
-                               highlightbackground=pal["line"])
-        search_wrap.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.search = tk.Entry(search_wrap, font=fonts["ui"], bg="#ffffff",
-                               fg=pal["ink"], relief=tk.FLAT,
+        bar.pack(fill=tk.X, padx=px(22), pady=(px(10), 0))
+        search_box = RoundedFrame(bar, radius=px(8), fill="#ffffff", border=pal["line"])
+        search_box.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.search = tk.Entry(search_box.body, font=fonts["ui"], bg="#ffffff",
+                               fg=pal["ink"], relief=tk.FLAT, bd=0,
                                insertbackground=pal["peri"], highlightthickness=0)
         self.search.pack(side=tk.LEFT, fill=tk.X, expand=True,
-                         padx=px(8), ipady=px(5))
+                         padx=px(10), pady=px(6))
         self._search_ph = _Placeholder(self.search, self.SEARCH_HINT,
                                        pal["ink"], pal["ink_dim"])
-        # <Key> runs before Tk's class binding inserts the character, so the
-        # hint text is always gone before real input lands (also covers paste).
         self.search.bind("<Key>", self._on_search_key_press)
-        self.search.bind("<FocusIn>", lambda e: self._on_search_key_press())
-        self.search.bind("<FocusOut>", lambda e: self._search_ph.show())
+        self.search.bind("<FocusIn>", lambda e: (search_box.set_border(pal.get("accent", pal["peri"])),
+                                                 self._on_search_key_press()))
+        self.search.bind("<FocusOut>", lambda e: (search_box.set_border(pal["line"]),
+                                                  self._search_ph.show()))
         self.search.bind("<KeyRelease>", self._on_search_key)
         self.search.bind("<Escape>", lambda e: self._clear_search())
 
@@ -421,12 +434,12 @@ class ChatHistoryWindow:
             fill, fg, hover = self._button_colors(kind)
             self._PastelButton(bar, text, command=cmd, parent_bg=pal["bg"],
                                fill=fill, fg=fg, hover=hover,
-                               font=fonts["ui"], padx=px(11),
-                               pady=px(5)).pack(side=tk.LEFT, padx=(px(6), 0))
+                               font=fonts["ui"], padx=px(12),
+                               pady=px(6)).pack(side=tk.LEFT, padx=(px(8), 0))
 
         # ---- filter chips ----------------------------------------------
         chips_row = tk.Frame(win, bg=pal["bg"])
-        chips_row.pack(fill=tk.X, padx=px(18), pady=(px(8), 0))
+        chips_row.pack(fill=tk.X, padx=px(22), pady=(px(10), 0))
         self._chips = {}
         for key, label in FILTER_LABELS:
             chip = _Chip(chips_row, f"{label} 0", lambda k, key=key: self.set_filter(key),
@@ -435,21 +448,48 @@ class ChatHistoryWindow:
             chip.pack(side=tk.LEFT, padx=(0, px(6)))
             self._chips[key] = (chip, label)
         self._count_label = tk.Label(chips_row, text="", font=fonts["small"],
-                                     fg=pal["ink_soft"], bg=pal["bg"])
+                                     fg=pal["ink_dim"], bg=pal["bg"])
         self._count_label.pack(side=tk.RIGHT)
 
-        # ---- transcript -------------------------------------------------
-        body = tk.Frame(win, bg=pal["bg"])
-        body.pack(fill=tk.BOTH, expand=True, padx=px(18), pady=(px(10), px(6)))
+        # ---- composer (pack at bottom first so transcript never crowds it) --
+        row = tk.Frame(win, bg=pal["bg"])
+        row.pack(side=tk.BOTTOM, fill=tk.X, padx=px(22), pady=(px(6), px(16)))
+        entry_box = RoundedFrame(row, radius=px(8), fill="#ffffff", border=pal["line"])
+        entry_box.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.entry = tk.Entry(entry_box.body, font=fonts["body"], bg="#ffffff",
+                              fg=pal["ink"], relief=tk.FLAT, bd=0,
+                              insertbackground=pal["peri"], highlightthickness=0)
+        self.entry.pack(fill=tk.X, expand=True, padx=px(10), pady=px(7))
+        self._entry_ph = _Placeholder(self.entry, "和织织说点什么…（Enter 发送）",
+                                      pal["ink"], pal["ink_dim"])
+        self.entry.bind("<Key>", lambda e: self._entry_ph.hide())
+        self.entry.bind("<FocusIn>", lambda e: (entry_box.set_border(pal.get("accent", pal["peri"])),
+                                                self._entry_ph.hide()))
+        self.entry.bind("<FocusOut>", lambda e: (entry_box.set_border(pal["line"]),
+                                                 self._entry_ph.show()))
+        self.entry.bind("<Return>", lambda e: self.submit())
+        self.entry.bind("<KP_Enter>", lambda e: self.submit())
+        self._PastelButton(row, "发送", command=self.submit, parent_bg=pal["bg"],
+                           fill=pal["btn_primary"], fg=pal["btn_primary_fg"],
+                           hover=pal["btn_primary_hover"], font=fonts["ui_bold"],
+                           padx=px(18), pady=px(7)).pack(side=tk.RIGHT,
+                                                         padx=(px(10), 0))
+
+        # ---- transcript (rounded card container) -----------------------
+        tcard = RoundedFrame(win, radius=px(12), fill=pal["hist_surface"],
+                             border=pal.get("line_soft", pal["line"]))
+        tcard.pack(fill=tk.BOTH, expand=True, padx=px(22), pady=(px(10), px(6)))
+        body = tk.Frame(tcard.body, bg=pal["hist_surface"])
+        body.pack(fill=tk.BOTH, expand=True, padx=px(4), pady=px(4))
         self.canvas = tk.Canvas(body, bg=pal["hist_surface"],
-                                highlightthickness=1,
-                                highlightbackground=pal["line"], bd=0)
+                                highlightthickness=0, bd=0)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar = ttk.Scrollbar(body, orient=tk.VERTICAL,
-                                       style=self.scroll_style,
+                                       style="CCCard.Vertical.TScrollbar",
                                        command=self.canvas.yview)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.canvas.config(yscrollcommand=self._on_yview)
+        self._scroller = SmoothScroll(self.canvas, step=px(72))
         self.canvas.bind("<Configure>", lambda e: self.schedule_render(70))
         self.canvas.bind("<Enter>", lambda e: self.canvas.bind_all("<MouseWheel>", self._on_wheel))
         self.canvas.bind("<Leave>", lambda e: self.canvas.unbind_all("<MouseWheel>"))
@@ -463,28 +503,6 @@ class ChatHistoryWindow:
                                        font=fonts["small"], padx=px(10), pady=px(4))
         self.jump.place_forget()
 
-        # ---- composer ---------------------------------------------------
-        row = tk.Frame(win, bg=pal["bg"])
-        row.pack(fill=tk.X, padx=px(18), pady=(0, px(14)))
-        entry_wrap = tk.Frame(row, bg="#ffffff", highlightthickness=1,
-                              highlightbackground=pal["line"])
-        entry_wrap.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.entry = tk.Entry(entry_wrap, font=fonts["body"], bg="#ffffff",
-                              fg=pal["ink"], relief=tk.FLAT,
-                              insertbackground=pal["peri"], highlightthickness=0)
-        self.entry.pack(fill=tk.X, expand=True, padx=px(8), ipady=px(6))
-        self._entry_ph = _Placeholder(self.entry, "和织织说点什么…（Enter 发送）",
-                                      pal["ink"], pal["ink_dim"])
-        self.entry.bind("<Key>", lambda e: self._entry_ph.hide())
-        self.entry.bind("<FocusIn>", lambda e: self._entry_ph.hide())
-        self.entry.bind("<FocusOut>", lambda e: self._entry_ph.show())
-        self.entry.bind("<Return>", lambda e: self.submit())
-        self.entry.bind("<KP_Enter>", lambda e: self.submit())
-        self._PastelButton(row, "发送", command=self.submit, parent_bg=pal["bg"],
-                           fill=pal["btn_primary"], fg=pal["btn_primary_fg"],
-                           hover=pal["btn_primary_hover"], font=fonts["ui_bold"],
-                           padx=px(16), pady=px(6)).pack(side=tk.RIGHT,
-                                                          padx=(px(10), 0))
         self._search_ph.show()
         self._entry_ph.show()
         self.entry.focus_set()
@@ -693,8 +711,7 @@ class ChatHistoryWindow:
     def _on_wheel(self, event):
         if not self.alive():
             return
-        steps = int(-event.delta / 120) or (-1 if event.delta > 0 else 1)
-        self.canvas.yview_scroll(steps * 3, "units")
+        self._scroller.wheel(event)
         return "break"
 
     def jump_to_latest(self):
@@ -743,6 +760,7 @@ class ChatHistoryWindow:
             canvas.delete("all")
         except tk.TclError:
             return
+        self._canvas_imgs = []
         width = canvas.winfo_width()
         if width <= 1:
             self.schedule_render(40)
@@ -804,8 +822,16 @@ class ChatHistoryWindow:
             self._count_label.config(text=f"共 {total} 条")
 
     def _rr(self, canvas, x0, y0, x1, y1, r, **kw):
-        r = max(0.0, min(r, (x1 - x0) / 2.0, (y1 - y0) / 2.0))
-        return self._rounded(canvas, x0, y0, x1, y1, r, **kw)
+        w = max(2, int(round(x1 - x0)))
+        h = max(2, int(round(y1 - y0)))
+        rad = max(0, min(int(round(r)), w // 2, h // 2))
+        fill = kw.get("fill") or "#ffffff"
+        outline = kw.get("outline") or None
+        tags = kw.get("tags") or ()
+        img = round_rect_photo(w, h, rad, fill, outline=outline)
+        self._canvas_imgs.append(img)
+        return canvas.create_image(int(round(x0)), int(round(y0)),
+                                   image=img, anchor="nw", tags=tags)
 
     def _draw_block(self, canvas, block, y, inner, col, pad):
         if block["kind"] == "sys":
@@ -834,11 +860,11 @@ class ChatHistoryWindow:
                     + 2 * bpx) if lines else 0
         bubble_h = (len(lines) * line_h + 2 * bpy) if lines else 0
 
-        # avatar
+        # avatar (anti-aliased circle)
         ax = pad + avatar / 2 if pet else pad + inner - avatar / 2
-        canvas.create_oval(ax - avatar / 2, y, ax + avatar / 2, y + avatar,
-                           fill=col["avatar_pet" if pet else "avatar_user"],
-                           outline="")
+        self._rr(canvas, ax - avatar / 2, y, ax + avatar / 2, y + avatar,
+                 avatar / 2, fill=col["avatar_pet" if pet else "avatar_user"],
+                 outline="")
         canvas.create_text(ax, y + avatar / 2, text="织" if pet else "我",
                            fill="#ffffff", font=self.fonts["avatar"])
 

@@ -2,7 +2,7 @@
 
 > 一个能陪你聊天、帮你干活、还会因为 API 余额告急而闹脾气的 Windows 桌面 AI 角色。
 
-![版本](https://img.shields.io/badge/version-3.3-blue)
+![版本](https://img.shields.io/badge/version-3.3.2-blue)
 ![平台](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB)
 ![许可证](https://img.shields.io/badge/license-未指定-orange)
@@ -83,7 +83,7 @@ Python plugin system. Chinese-first, Windows 10/11 x64.*
 ### 方式一：使用打包好的 EXE（推荐）
 
 1. 从 [最新 Release](https://github.com/yimeng-YM/nijikori-pet/releases/latest) 下载名称以 `-win64.exe` 结尾的文件
-   （下载后可自行改名为 `虹语织-桌宠v3.3.exe`，不影响运行）。
+   （下载后可自行改名，不影响运行）。
 2. 双击运行。首次运行若弹出 SmartScreen 提示，点「更多信息」→「仍要运行」。
 3. 右键桌宠 → 「控制中心」，在「API 与模型」页填入 **API Base URL / API Key / 模型名称**。
 
@@ -294,6 +294,11 @@ def handle(args, pet):
 - 加右键快捷菜单项、新控制中心页面，或修改已有页面（`modify_control_center_page`）
 - 注册新表情立绘与自定义动作
 - 监听事件（启动 / 消息 / 回复 / 工具调用前后 / 表情变化 / 定时任务）
+- 通过 `api.emit(event, *args)` 发布插件事件，监听器接收 `(pet, *args)`
+
+控制中心左侧导航支持滚轮与滚动条；插件页面增多时可以滚动到末项，聊天与余额按钮保持可见。
+
+插件页面可通过 `api.pet_ui()` 使用与控制中心一致的圆角卡片、动画开关、输入框、下拉框、状态徽章、说明弹窗和二级窗口。
 
 ### 安全模型
 
@@ -337,6 +342,7 @@ Nijikori pet/
 │   ├── pet_io.py           # 原子写入与文本读取
 │   ├── pet_snapshot.py     # 截图工具
 │   ├── pet_chat_*.py       # 对话输入 / 渲染 / 历史
+│   ├── pet_ui_kit.py       # 统一圆角控件、状态徽章与滚动动画
 │   ├── layered_pet.py      # 分层立绘与动画
 │   ├── alpha_window.py     # 逐像素透明窗口
 │   ├── window_capture.py   # 窗口离屏截图
@@ -359,9 +365,9 @@ Nijikori pet/
 
 | 文件 | 说明 |
 | --- | --- |
-| `NijiKori-pet-v3.3-win64.exe` | Windows 免安装单文件版 |
-| `NijiKori-pet-v3.3-source.zip` | 源码版，运行需 Python 3.11 |
-| `NijiKori-pet-v3.3-SHA256SUMS.txt` | 下载文件的 SHA-256 校验值 |
+| `NijiKori-pet-v3.3.2-win64.exe` | Windows 免安装单文件版 |
+| `NijiKori-pet-v3.3.2-source.zip` | 源码版，运行需 Python 3.11 |
+| `NijiKori-pet-v3.3.2-SHA256SUMS.txt` | 下载文件的 SHA-256 校验值 |
 
 源码运行步骤见 [快速开始](#快速开始)。
 
@@ -413,6 +419,7 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 | 版本 | 日期 | 产物 | SHA-256 |
 | --- | --- | --- | --- |
+| v3.3.2 | 2026-10-16 | `NijiKori-pet-v3.3.2-win64.exe`<br>`NijiKori-pet-v3.3.2-source.zip` | 见 [v3.3.2 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.3.2) |
 | v3.3 | 2026-10-15 | `NijiKori-pet-v3.3-win64.exe`<br>`NijiKori-pet-v3.3-source.zip` | 见 [v3.3 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.3) |
 | v3.2 | 2026-10-02 | `NijiKori-pet-v3.2-win64.exe`<br>`NijiKori-pet-v3.2-source.zip` | 见 [v3.2 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.2) |
 | v3.1 | 2026-09-25 | `NijiKori-pet-v3.1-win64.exe`<br>`NijiKori-pet-v3.1-source.zip` | 见 [v3.1 Release](https://github.com/yimeng-YM/nijikori-pet/releases/tag/v3.1) |
@@ -422,6 +429,6 @@ PyInstaller 单文件打包偶有误报，请选择信任或加入白名单。
 
 <div align="center">
 
-**虹语织 NijiKori v3.3** · Windows 原生桌面萌宠与 API 助手
+**虹语织 NijiKori v3.3.2** · Windows 原生桌面萌宠与 API 助手
 
 </div>

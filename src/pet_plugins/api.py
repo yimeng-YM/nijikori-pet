@@ -160,6 +160,11 @@ class PluginAPI:
         self._unload_hooks.append(callback)
         return callback
 
+    def emit(self, event, *args):
+        """发布插件事件；监听器接收 (pet, *args)，在调用线程执行。"""
+        pet = self._manager.host.pet if self._manager.host else None
+        return self._manager.emit(event, pet, *args)
+
     # ------------------------------------------------------------------
     # 界面
     # ------------------------------------------------------------------
